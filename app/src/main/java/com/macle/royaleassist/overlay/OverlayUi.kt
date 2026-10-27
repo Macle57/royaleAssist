@@ -197,6 +197,14 @@ private fun DoneContent(state: PanelState.Done, onVerify: () -> Unit) {
         return
     }
     NameHeader(s.name, s.clanName?.let { c -> s.clanRole?.let { "$c, $it" } ?: c }, s.tag)
+    if (!r.strongMatch) {
+        Text(
+            "Best guess only: the name or clan on screen did not fully match this player.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Royal.Gold,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
     Spacer(Modifier.height(10.dp))
     StatRow(s)
     if (s.deck.isNotEmpty()) {

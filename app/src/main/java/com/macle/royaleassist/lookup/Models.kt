@@ -42,6 +42,8 @@ data class LookupResult(
     val alternatives: List<PlayerHit> = emptyList(),
     /** True when RoyaleAPI answered with a Cloudflare challenge and the user should open the verifier. */
     val needsVerification: Boolean = false,
+    /** False when the pick is only the best weak candidate (name or clan did not fully match). */
+    val strongMatch: Boolean = false,
     val log: List<String> = emptyList(),
     val error: String? = null,
 )

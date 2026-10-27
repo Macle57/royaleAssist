@@ -50,7 +50,7 @@ class LookupChain(
         },
         Strategy("L2v RoyaleAPI search with OCR fixes", web = true) { ctx ->
             val out = mutableListOf<PlayerHit>()
-            for (v in ocrVariants(ctx.name).take(3)) {
+            for (v in ocrVariants(ctx.name).take(4)) {
                 val rows = RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(v, exact = false)))
                 ctx.log("  variant '$v': ${rows.size} rows")
                 out += rows
@@ -111,7 +111,7 @@ class LookupChain(
 
         // A tag typed directly ("#98VQRGCQ") skips the search.
         if (TAG_RE.matches(cleanName)) {
-            return finish(ctx, Scored(PlayerHit(cleanName, tagNoHash(cleanName)), 1.0, 0.0, 1.0), "direct tag", emptyList())
+            return finish(ctx, Scored(PlayerHit(cleanName, tagNoHash(cleanName)), 1.0, 0.0, 1.0), "direct tag", emptyList(), strong = true)
         }
 
         var bestFrom: String? = null
@@ -139,12 +139,12 @@ class LookupChain(
             val top = scored.maxBy { it.score }
             ctx.log("${s.id}: ${hits.size} candidates, best ${describe(top)}")
             if (prevBest == null || top.score > prevBest.score) bestFrom = s.id
-            if (isStrong(top, ctx.clan)) return finish(ctx, top, s.id, alternatives(ctx, top))
+            if (isStrong(top, ctx.clan)) return finish(ctx, top, s.id, alternatives(ctx, top), strong = true)
         }
         val best = ctx.candidates.values.maxByOrNull { it.score }
         if (best != null && best.nameSim >= MIN_NAME_SIM) {
             ctx.log("no strong match; using best weak candidate ${describe(best)}")
-            return finish(ctx, best, bestFrom ?: "best weak candidate", alternatives(ctx, best))
+            return finish(ctx, best, bestFrom ?: "best weak candidate", alternatives(ctx, best), strong = false)
         }
         ctx.log("no strategy found a player")
         return LookupResult(
@@ -158,7 +158,7 @@ class LookupChain(
     private fun alternatives(ctx: Ctx, chosen: Scored) =
         ctx.candidates.values.filter { it.hit.tag != chosen.hit.tag }.sortedByDescending { it.score }.take(5).map { it.hit }
 
-    private suspend fun finish(ctx: Ctx, found: Scored, strategy: String, alternatives: List<PlayerHit>): LookupResult {
+    private suspend fun finish(ctx: Ctx, found: Scored, strategy: String, alternatives: List<PlayerHit>, strong: Boolean): LookupResult {
         ctx.log("$strategy: picked ${describe(found)}")
         val stats = fetchStats(ctx, found.hit)
         return LookupResult(
@@ -170,6 +170,7 @@ class LookupChain(
             stats = stats,
             alternatives = alternatives,
             needsVerification = ctx.cloudflareBlocked,
+            strongMatch = strong,
             log = ctx.log,
         )
     }
@@ -222,7 +223,11 @@ class LookupChain(
                 .trim()
 
         fun score(hit: PlayerHit, name: String, clan: String?): Scored {
-            val ns = StringSim.similarity(hit.name, name)
+            // Also try without a possible junk first letter from the clan badge, at a small penalty.
+            val ns = maxOf(
+                StringSim.similarity(hit.name, name),
+                if (name.length >= 4) StringSim.similarity(hit.name, name.substring(1)) * 0.9 else 0.0,
+            )
             val cs = if (clan != null) StringSim.similarity(hit.clanName, clan) else 0.0
             val score = if (clan != null) ns * 0.6 + cs * 0.4 else ns
             return Scored(hit, ns, cs, score)
@@ -245,7 +250,10 @@ class LookupChain(
         /** Name variants that undo typical ML Kit misreads of the game font. */
         fun ocrVariants(name: String): List<String> {
             val subs = listOf("v" to "y", "V" to "Y", "rn" to "m", "0" to "O", "1" to "l", "I" to "l", "l" to "I", "5" to "S", "u" to "v", "c" to "e")
-            return subs.mapNotNull { (a, b) -> if (name.contains(a)) name.replace(a, b) else null }
+            val fixes = subs.mapNotNull { (a, b) -> if (name.contains(a)) name.replace(a, b) else null }
+            // The clan badge left of the name is often read as an extra first letter ("CROYale King").
+            val dropFirst = if (name.length >= 4 && !name[1].isWhitespace()) listOf(name.substring(1)) else emptyList()
+            return (fixes.take(2) + dropFirst + fixes.drop(2))
                 .filter { it != name }
                 .distinct()
         }

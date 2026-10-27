@@ -124,7 +124,7 @@ class DebugActivity : Activity() {
         val h = r.hit
         val s = r.stats
         return "lookup=${r.strategy ?: "none"} found='${h?.name ?: ""}' tag=${h?.tag?.let { "#$it" } ?: ""} " +
-            "foundClan='${h?.clanName ?: ""}' conf=${"%.2f".format(r.confidence)} cfBlocked=${r.needsVerification} " +
+            "foundClan='${h?.clanName ?: ""}' conf=${"%.2f".format(r.confidence)} strong=${r.strongMatch} cfBlocked=${r.needsVerification} " +
             "trophies=${s?.trophies} level=${s?.expLevel} statsSrc='${s?.source ?: ""}' err='${r.error ?: ""}' " +
             "log=[${r.log.joinToString(" ; ")}]"
     }

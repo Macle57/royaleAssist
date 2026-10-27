@@ -116,26 +116,22 @@ class ScreenCapturer(private val context: Context) {
         drain(r)
         vd.surface = r.surface
         try {
+            // hideOverlay() already waited for a couple of frames; give SurfaceFlinger a moment to
+            // compose the overlay-free screen into our surface, then take the newest frame. Frames
+            // composed before the overlay disappeared are older and get discarded by acquireLatestImage.
             hideOverlay()
-            val after = System.nanoTime()
-            var fallback: Image? = null
-            val deadline = System.currentTimeMillis() + 1200
-            while (System.currentTimeMillis() < deadline) {
+            delay(60)
+            val t0 = System.currentTimeMillis()
+            while (System.currentTimeMillis() - t0 < 1500) {
                 val img = r.acquireLatestImage()
                 if (img != null) {
-                    if (img.timestamp >= after) {
-                        fallback?.close()
-                        L.i("capture: fresh frame (ts +${(img.timestamp - after) / 1_000_000} ms)")
-                        return img.use { toBitmap(it) }
-                    }
-                    fallback?.close()
-                    fallback = img
+                    L.i("capture: frame after ${System.currentTimeMillis() - t0 + 60} ms")
+                    return img.use { toBitmap(it) }
                 }
                 delay(16)
             }
-            // Static screens may not produce a new frame; the newest one we saw still had the overlay hidden.
-            L.w("capture: no fresh frame, using ${if (fallback != null) "latest frame" else "nothing"}")
-            return fallback?.use { toBitmap(it) }
+            L.w("capture: no frame within 1.5 s")
+            return null
         } finally {
             vd.surface = null
         }

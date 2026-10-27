@@ -1,9 +1,11 @@
 package com.macle.royaleassist.ui
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -52,6 +54,8 @@ fun RoyalTheme(content: @Composable () -> Unit) {
             error = Royal.Danger,
         ),
         typography = RoyalTypography,
-        content = content,
-    )
+    ) {
+        // Outside a Surface the default content colour is black; make plain Text readable.
+        CompositionLocalProvider(LocalContentColor provides Royal.Parchment, content = content)
+    }
 }
