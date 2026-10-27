@@ -66,6 +66,7 @@ import com.macle.royaleassist.overlay.OverlayService
 import com.macle.royaleassist.overlay.DeckGrid
 import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.settings.OverlayPrefs
+import com.macle.royaleassist.cache.CacheTtl
 import kotlin.math.roundToInt
 import com.macle.royaleassist.ui.Royal
 import com.macle.royaleassist.ui.RoyalTheme
@@ -109,6 +110,7 @@ private fun SetupScreen(app: RoyaleAssistApp) {
     }
 
     val overlay by app.settings.overlayPrefs.collectAsState(initial = OverlayPrefs())
+    val cacheTtl by app.settings.cacheTtl.collectAsState(initial = CacheTtl.DEFAULT)
     fun setOverlay(change: (OverlayPrefs) -> OverlayPrefs) { scope.launch { app.settings.updateOverlayPrefs(change) } }
 
     Column(
@@ -121,7 +123,10 @@ private fun SetupScreen(app: RoyaleAssistApp) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Column(Modifier.padding(horizontal = 4.dp)) {
-            Text("royaleAssist", style = MaterialTheme.typography.headlineSmall, color = Royal.Gold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("royaleAssist", style = MaterialTheme.typography.headlineSmall, color = Royal.Gold, modifier = Modifier.weight(1f))
+                Pill("History", primary = false) { context.startActivity(HistoryActivity.intent(context)) }
+            }
             Text(
                 "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -262,6 +267,17 @@ private fun SetupScreen(app: RoyaleAssistApp) {
             Row(Modifier.padding(top = 6.dp)) {
                 Pill("Verify RoyaleAPI", primary = false) { context.startActivity(VerifyActivity.intent(context, query)) }
             }
+            Text("Cache for", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 14.dp))
+            Text(
+                "A player scanned again within this time is shown instantly from the phone, without network. Refresh in the pinned card fetches fresh data.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Royal.Mist,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                CacheTtl.entries.forEach { t ->
+                    ChoiceChip(t.label, selected = t == cacheTtl) { scope.launch { app.settings.setCacheTtl(t) } }
+                }
+            }
         }
 
         SectionCard("Debug") {
@@ -296,6 +312,21 @@ private fun sizeLabel(scale: Float): String {
         else -> "Large"
     }
     return "$name, %.2fx".format(scale)
+}
+
+@Composable
+private fun ChoiceChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (selected) Royal.Night else Royal.Gold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) Royal.Gold else Color.Transparent)
+            .border(1.dp, Royal.Gold, RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

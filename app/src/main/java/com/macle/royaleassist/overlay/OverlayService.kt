@@ -30,6 +30,8 @@ import com.macle.royaleassist.RoyaleAssistApp
 import com.macle.royaleassist.capture.ConsentActivity
 import com.macle.royaleassist.capture.ScreenCapturer
 import com.macle.royaleassist.lookup.VerifyActivity
+import com.macle.royaleassist.lookup.RoyaleApiWeb
+import android.net.Uri
 import com.macle.royaleassist.ocr.Box
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
@@ -296,6 +298,8 @@ class OverlayService : Service() {
                     onVerify = { openVerifier() },
                     alpha = p.panelAlpha,
                     deckOnly = p.deckOnly,
+                    onRefresh = { tag -> refreshPlayer(tag) },
+                    onOpenWeb = { tag -> openOnRoyaleApi(tag) },
                 )
                 }
             }
@@ -505,6 +509,37 @@ class OverlayService : Service() {
         } finally {
             setOverlaysVisible(true)
             busy.value = false
+        }
+    }
+
+    /** Opens the player page in the browser; works from the service because we hold the overlay permission. */
+    private fun openOnRoyaleApi(tag: String) {
+        val url = RoyaleApiWeb.playerUrl(tag)
+        L.i("service: opening $url")
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            showPanel(PanelState.Hidden)
+        } catch (e: Exception) {
+            L.e("service: cannot open browser", e)
+        }
+    }
+
+    /** Re-fetches the pinned player, bypassing the cache. */
+    private fun refreshPlayer(tag: String) {
+        val cur = panel.value as? PanelState.Result ?: return
+        cancelJob()
+        job = scope.launch {
+            busy.value = true
+            try {
+                val r = app.lookup.refresh(tag)
+                showPanel(
+                    if (r.stats != null) PanelState.Result(cur.lines, cur.pick, r)
+                    else PanelState.NotFound(r.error ?: "Refresh failed", cur.lines, cur.pick),
+                    pinRequested = true,
+                )
+            } finally {
+                busy.value = false
+            }
         }
     }
 

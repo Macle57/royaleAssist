@@ -1,6 +1,8 @@
 package com.macle.royaleassist
 
 import android.app.Application
+import com.macle.royaleassist.cache.CacheDb
+import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.lookup.HttpClients
 import com.macle.royaleassist.lookup.LookupChain
 import com.macle.royaleassist.ocr.OcrEngine
@@ -17,7 +19,9 @@ class RoyaleAssistApp : Application() {
 
     val settings by lazy { Settings(this) }
     val http by lazy { HttpClients(this) }
-    val lookup by lazy { LookupChain(http, settings) }
+    val db by lazy { CacheDb.create(this) }
+    val cache by lazy { LookupCache(db.dao()) }
+    val lookup by lazy { LookupChain(http, settings, cache) }
     val ocr by lazy { OcrEngine() }
     val tesseract by lazy { TesseractFallback(this) }
     val analyzer by lazy { Analyzer(ocr, tesseract, lookup) }

@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** One row from RoyaleAPI's player search page, or one clan member from the official API. */
+@Serializable
 data class PlayerHit(
     val name: String,
     val tag: String,          // without '#'
@@ -12,6 +13,7 @@ data class PlayerHit(
 )
 
 /** Basic stats shown in the panel. Every field is optional because the sources differ. */
+@Serializable
 data class PlayerStats(
     val name: String,
     val tag: String,
@@ -48,12 +50,17 @@ data class LookupResult(
     val lastBattle: LastBattle? = null,
     /** Why [lastBattle] is missing although it was requested. */
     val lastBattleError: String? = null,
+    /** Served from the local cache; [fetchedAt] is when the data was fetched (epoch ms). */
+    val cached: Boolean = false,
+    val fetchedAt: Long? = null,
     val log: List<String> = emptyList(),
     val error: String? = null,
 )
 
+@Serializable
 data class DeckCard(val name: String, val level: Int?, val iconUrl: String?)
 
+@Serializable
 data class LastBattle(
     /** "Ladder", "Path of Legends", "CRL 20-Win Challenge", ... */
     val mode: String,

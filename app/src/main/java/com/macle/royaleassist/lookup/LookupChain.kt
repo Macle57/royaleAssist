@@ -1,6 +1,9 @@
 package com.macle.royaleassist.lookup
 
 import com.macle.royaleassist.L
+import com.macle.royaleassist.cache.CachePolicy
+import com.macle.royaleassist.cache.CacheTtl
+import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.lookup.OfficialApi.Companion.toStats
 import com.macle.royaleassist.settings.Settings
 import kotlinx.coroutines.CancellationException
@@ -30,12 +33,22 @@ import kotlinx.coroutines.flow.first
 class LookupChain(
     private val http: HttpClients,
     private val settings: Settings,
+    private val cache: LookupCache? = null,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val api = OfficialApi(http)
 
     data class Scored(val hit: PlayerHit, val nameSim: Double, val clanSim: Double, val score: Double)
 
-    private class Ctx(val name: String, val clan: String?, val token: String?, val wantDeck: Boolean = false) {
+    private class Ctx(
+        val name: String,
+        val clan: String?,
+        val token: String?,
+        val wantDeck: Boolean = false,
+        val ttl: CacheTtl = CacheTtl.DEFAULT,
+        val bypassCache: Boolean = false,
+        val queryKey: String? = null,
+    ) {
         val log = mutableListOf<String>()
         var cloudflareBlocked = false
         val candidates = LinkedHashMap<String, Scored>()
@@ -46,15 +59,15 @@ class LookupChain(
 
     private val strategies = listOf(
         Strategy("L1 RoyaleAPI exact search", web = true) { ctx ->
-            RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = true)))
+            searchRows(ctx, RoyaleApiWeb.searchUrl(ctx.name, exact = true))
         },
         Strategy("L2 RoyaleAPI fuzzy search", web = true) { ctx ->
-            RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = false)))
+            searchRows(ctx, RoyaleApiWeb.searchUrl(ctx.name, exact = false))
         },
         Strategy("L2v RoyaleAPI search with OCR fixes", web = true) { ctx ->
             val out = mutableListOf<PlayerHit>()
             for (v in ocrVariants(ctx.name).take(4)) {
-                val rows = RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(v, exact = false)))
+                val rows = searchRows(ctx, RoyaleApiWeb.searchUrl(v, exact = false))
                 ctx.log("  variant '$v': ${rows.size} rows")
                 out += rows
                 if (rows.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) || isStrong(score(it, v, ctx.clan), ctx.clan) }) break
@@ -104,13 +117,42 @@ class LookupChain(
         },
     )
 
-    /** Main entry: OCR'd name + optional clan -> result. Never throws (except cancellation). */
-    suspend fun lookup(name: String, clan: String?): LookupResult {
+    /** Search page rows, from the cache when fresh. */
+    private suspend fun searchRows(ctx: Ctx, url: String): List<PlayerHit> {
+        if (cache != null && !ctx.bypassCache) {
+            cache.search(url, ctx.ttl, clock())?.let {
+                ctx.log("  cached search ${url.substringAfter("?")}: ${it.size} rows")
+                return it
+            }
+        }
+        val rows = RoyaleApiWeb.parseSearch(http.getHtml(url))
+        cache?.putSearch(url, rows, clock())
+        return rows
+    }
+
+    /**
+     * Main entry: OCR'd name + optional clan -> result. A repeated (name, clan) within the cache
+     * TTL is answered from the local cache without any network. Never throws (except cancellation).
+     */
+    suspend fun lookup(name: String, clan: String?, bypassCache: Boolean = false): LookupResult {
         val cleanName = cleanOcrName(name)
         val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }
-        val ctx = Ctx(cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly)
+        val key = CachePolicy.queryKey(cleanName, cleanClan)
+        val ctx = Ctx(
+            cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
+            settings.cacheTtl.first(), bypassCache, key,
+        )
         ctx.log("query name='$cleanName' clan='${cleanClan ?: "-"}' token=${if (ctx.token != null) "yes" else "no"}")
         if (cleanName.isBlank()) return LookupResult(name, clan, null, null, 0.0, null, log = ctx.log, error = "Empty name")
+
+        if (cache != null && !bypassCache) {
+            val hit = cache.byQuery(key)
+            if (hit != null && CachePolicy.isFresh(hit.entity.fetchedAt, clock(), ctx.ttl)) {
+                ctx.log("cache hit for '$key' -> #${hit.entity.tag} (fetched ${CachePolicy.age(hit.entity.fetchedAt, clock())}, no network)")
+                return fromCache(ctx, hit, "cache")
+            }
+            if (hit != null) ctx.log("cache entry for '$key' is stale (${CachePolicy.age(hit.entity.fetchedAt, clock())})")
+        }
 
         // A tag typed directly ("#98VQRGCQ") skips the search.
         if (TAG_RE.matches(cleanName)) {
@@ -161,8 +203,61 @@ class LookupChain(
     private fun alternatives(ctx: Ctx, chosen: Scored) =
         ctx.candidates.values.filter { it.hit.tag != chosen.hit.tag }.sortedByDescending { it.score }.take(5).map { it.hit }
 
+    /** Re-fetches stats and deck for a known tag, ignoring the cache (the panel's Refresh). */
+    suspend fun refresh(tag: String): LookupResult {
+        val t = tagNoHash(tag)
+        val old = cache?.byTag(t)
+        val ctx = Ctx(
+            old?.entity?.name ?: "#$t", old?.entity?.clanName, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
+            settings.cacheTtl.first(), bypassCache = true, queryKey = null,
+        )
+        ctx.log("refresh #$t (cache bypassed)")
+        val hit = PlayerHit(old?.entity?.name ?: "#$t", t, old?.entity?.clanName, old?.entity?.clanTag)
+        return finish(
+            ctx, Scored(hit, 1.0, 1.0, old?.entity?.score ?: 1.0), old?.entity?.strategy ?: "direct tag", emptyList(),
+            strong = old?.entity?.strongMatch ?: true,
+        )
+    }
+
+    /** Builds a result from a cache entry; fetches only a missing deck when the deck view needs it. */
+    private suspend fun fromCache(ctx: Ctx, c: LookupCache.Cached, strategy: String?): LookupResult {
+        var battle = c.battle
+        var battleError: String? = null
+        if (ctx.wantDeck && battle == null) {
+            ctx.log("cache has no deck; fetching the battle log")
+            val r = fetchLastBattle(ctx, c.entity.tag)
+            battle = r.getOrNull()
+            battleError = r.exceptionOrNull()?.message
+            battle?.let { cache?.updateBattle(c.entity.tag, it) }
+        }
+        cache?.touch(c.entity.tag, clock())
+        return LookupResult(
+            query = ctx.name,
+            clanQuery = ctx.clan,
+            hit = PlayerHit(c.entity.name, c.entity.tag, c.entity.clanName, c.entity.clanTag),
+            strategy = c.entity.strategy ?: strategy,
+            confidence = c.entity.score,
+            stats = c.stats,
+            strongMatch = c.entity.strongMatch,
+            lastBattle = battle,
+            lastBattleError = battleError,
+            cached = true,
+            fetchedAt = c.entity.fetchedAt,
+            log = ctx.log,
+        )
+    }
+
     private suspend fun finish(ctx: Ctx, found: Scored, strategy: String, alternatives: List<PlayerHit>, strong: Boolean): LookupResult {
         ctx.log("$strategy: picked ${describe(found)}")
+        // The search found a player whose stats are already cached (e.g. a different OCR reading).
+        if (cache != null && !ctx.bypassCache) {
+            val c = cache.byTag(found.hit.tag)
+            if (c != null && CachePolicy.isFresh(c.entity.fetchedAt, clock(), ctx.ttl)) {
+                ctx.log("stats for #${found.hit.tag} served from cache")
+                ctx.queryKey?.let { cache.putQuery(it, found.hit.tag, clock()) }
+                return fromCache(ctx, c, strategy).copy(alternatives = alternatives, needsVerification = ctx.cloudflareBlocked)
+            }
+        }
         // Stats and (when the deck view is on) the last battle are fetched in parallel.
         val (stats, battle) = coroutineScope {
             val s = async { fetchStats(ctx, found.hit) }
@@ -181,8 +276,13 @@ class LookupChain(
             strongMatch = strong,
             lastBattle = battle?.getOrNull(),
             lastBattleError = battle?.exceptionOrNull()?.message,
+            fetchedAt = clock(),
             log = ctx.log,
-        )
+        ).also { r ->
+            // Only real stats are cached; a fallback (network failed) must not replace a good entry.
+            if (r.stats != null && !r.stats.source.startsWith(FALLBACK_SOURCE)) cache?.putResult(r, ctx.queryKey, clock())
+            else if (r.stats != null) ctx.log("not caching: stats came from the search result only")
+        }
     }
 
     /** Last battle deck: official battle log with a token, else the RoyaleAPI battles page. */
@@ -249,11 +349,12 @@ class LookupChain(
         }
         return PlayerStats(
             name = hit.name, tag = hit.tag, clanName = hit.clanName, clanTag = hit.clanTag,
-            source = "search result only (add an API token for full stats)",
+            source = "$FALLBACK_SOURCE (add an API token for full stats)",
         )
     }
 
     companion object {
+        const val FALLBACK_SOURCE = "search result only"
         const val STRONG_NAME_SIM = 0.85
         const val STRONG_CLAN_SIM = 0.75
         const val MIN_NAME_SIM = 0.72

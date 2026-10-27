@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.macle.royaleassist.ocr.ScanRegion
+import com.macle.royaleassist.cache.CacheTtl
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -119,6 +120,15 @@ class Settings(private val context: Context) {
                 p[regionLeft] = n.left; p[regionTop] = n.top; p[regionRight] = n.right; p[regionBottom] = n.bottom
             }
         }
+    }
+
+    private val cacheTtlKey = stringPreferencesKey("cache_ttl")
+
+    /** How long cached lookups are reused without network. */
+    val cacheTtl: Flow<CacheTtl> = context.dataStore.data.map { CacheTtl.fromName(it[cacheTtlKey]) }
+
+    suspend fun setCacheTtl(ttl: CacheTtl) {
+        context.dataStore.edit { it[cacheTtlKey] = ttl.name }
     }
 
     /** When the region finds no name, also scan the whole screen (slower). Off by default. */

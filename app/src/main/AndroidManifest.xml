@@ -45,6 +45,11 @@
 
         <!-- WebView used to pass RoyaleAPI's Cloudflare check once; cookies are then reused by OkHttp. -->
         <activity
+            android:name=".HistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
             android:name=".lookup.VerifyActivity"
             android:excludeFromRecents="true"
             android:exported="false"

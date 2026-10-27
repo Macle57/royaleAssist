@@ -60,6 +60,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.macle.royaleassist.R
 import com.macle.royaleassist.lookup.BattleLog
+import com.macle.royaleassist.cache.CachePolicy
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.macle.royaleassist.lookup.LastBattle
 import com.macle.royaleassist.lookup.LookupResult
 import coil.compose.AsyncImage
@@ -132,11 +135,14 @@ fun Panel(
     pinned: Boolean,
     onPin: () -> Unit,
     onClose: () -> Unit,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
     onPickLine: (OcrLine) -> Unit,
     onVerify: () -> Unit,
     alpha: Float = 0.95f,
     deckOnly: Boolean = false,
+    onRefresh: ((String) -> Unit)? = null,
+    onOpenWeb: ((String) -> Unit)? = null,
+    showCloseHint: Boolean = true,
 ) {
     val battle = (state as? PanelState.Result)?.result?.lastBattle
     if (deckOnly && !pinned && battle != null) {
@@ -169,7 +175,7 @@ fun Panel(
         Box(Modifier.fillMaxWidth().height(3.dp).background(if (state is PanelState.NotFound) Royal.Danger else Royal.Gold))
         Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (pinned) "Opponent, pinned" else "Opponent, tap to pin",
+                if (!showCloseHint) "Opponent" else if (pinned) "Opponent, pinned" else "Opponent, tap to pin",
                 style = MaterialTheme.typography.labelSmall,
                 color = Royal.Mist,
                 modifier = Modifier.weight(1f),
@@ -192,7 +198,7 @@ fun Panel(
                 }
                 is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned)
             }
-            if (pinned) PinnedExtras(state, onRetry, onPickLine, onVerify)
+            if (pinned) PinnedExtras(state, onRetry, onPickLine, onVerify, onRefresh, onOpenWeb)
         }
     }
 }
@@ -322,9 +328,26 @@ private fun StatRow(s: PlayerStats) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PinnedExtras(state: PanelState, onRetry: () -> Unit, onPickLine: (OcrLine) -> Unit, onVerify: () -> Unit) {
+private fun PinnedExtras(
+    state: PanelState,
+    onRetry: (() -> Unit)?,
+    onPickLine: (OcrLine) -> Unit,
+    onVerify: () -> Unit,
+    onRefresh: ((String) -> Unit)?,
+    onOpenWeb: ((String) -> Unit)?,
+) {
     val r = (state as? PanelState.Result)?.result
+    val tag = r?.stats?.tag
+    r?.fetchedAt?.let { at ->
+        Text(
+            (if (r.cached) "Cached, fetched " else "Fetched ") + CachePolicy.age(at, System.currentTimeMillis()),
+            style = MaterialTheme.typography.labelSmall,
+            color = Royal.Mist,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
     r?.alternatives?.takeIf { it.isNotEmpty() }?.let { alts ->
         Text(
             "Other matches: " + alts.take(3).joinToString { "${it.name} #${it.tag}" },
@@ -361,8 +384,10 @@ private fun PinnedExtras(state: PanelState, onRetry: () -> Unit, onPickLine: (Oc
         }
     }
     Spacer(Modifier.height(10.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PillButton("Scan again", primary = true, onClick = onRetry)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (onRetry != null) PillButton("Scan again", primary = true, onClick = onRetry)
+        if (tag != null && onRefresh != null) PillButton("Refresh", primary = false) { onRefresh(tag) }
+        if (tag != null && onOpenWeb != null) PillButton("Open on RoyaleAPI", primary = false) { onOpenWeb(tag) }
         if (r?.needsVerification == true) PillButton("Verify RoyaleAPI", primary = false, onClick = onVerify)
     }
 }

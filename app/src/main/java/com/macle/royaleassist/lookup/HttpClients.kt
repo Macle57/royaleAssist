@@ -79,7 +79,15 @@ class HttpClients(private val context: Context) {
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()
             val t0 = System.currentTimeMillis()
-            client.newCall(req).execute().use { resp ->
+            // After a network change pooled connections can be dead and time out; drop them and retry once.
+            val call = try {
+                client.newCall(req).execute()
+            } catch (e: java.io.InterruptedIOException) {
+                L.w("HTTP GET $url timed out (${e.message}); retrying on a fresh connection")
+                client.connectionPool.evictAll()
+                client.newCall(req).execute()
+            }
+            call.use { resp ->
                 val body = resp.body?.string().orEmpty()
                 L.i("HTTP GET $url -> ${resp.code} (${body.length} chars, ${System.currentTimeMillis() - t0} ms)")
                 if (isCloudflareChallenge(resp, body)) throw CloudflareBlockedException(url)
