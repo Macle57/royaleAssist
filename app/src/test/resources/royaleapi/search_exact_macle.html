@@ -1,0 +1,810 @@
+<!DOCTYPE html><html lang="en"><head><!-- Google Tag Manager -->
+<!-- End Google Tag Manager -->    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Player Search - RoyaleAPI</title>
+<link rel="apple-touch-icon" sizes="57x57" href="https://royaleapi.com/static/img/favicon2/apple-icon-57x57.png?t=ad39e8ebc">
+<link rel="apple-touch-icon" sizes="60x60" href="https://royaleapi.com/static/img/favicon2/apple-icon-60x60.png?t=d6c57df4c">
+<link rel="apple-touch-icon" sizes="72x72" href="https://royaleapi.com/static/img/favicon2/apple-icon-72x72.png?t=38d77b57c">
+<link rel="apple-touch-icon" sizes="76x76" href="https://royaleapi.com/static/img/favicon2/apple-icon-76x76.png?t=9f254eaac">
+<link rel="apple-touch-icon" sizes="114x114" href="https://royaleapi.com/static/img/favicon2/apple-icon-114x114.png?t=6a4b7f8ec">
+<link rel="apple-touch-icon" sizes="120x120" href="https://royaleapi.com/static/img/favicon2/apple-icon-120x120.png?t=52854523c">
+<link rel="apple-touch-icon" sizes="144x144" href="https://royaleapi.com/static/img/favicon2/apple-icon-144x144.png?t=1a1a1059c">
+<link rel="apple-touch-icon" sizes="152x152" href="https://royaleapi.com/static/img/favicon2/apple-icon-152x152.png?t=06ddc337c">
+<link rel="apple-touch-icon" sizes="180x180" href="https://royaleapi.com/static/img/favicon2/apple-icon-180x180.png?t=f29fa7edc">
+<link rel="icon" type="image/png" sizes="192x192" href="https://royaleapi.com/static/img/favicon2/android-icon-192x192.png?t=22f051bec">
+<link rel="icon" type="image/png" sizes="32x32" href="https://royaleapi.com/static/img/favicon2/favicon-32x32.png?t=928771c9c">
+<link rel="icon" type="image/png" sizes="96x96" href="https://royaleapi.com/static/img/favicon2/favicon-96x96.png?t=c1c529c8c">
+<link rel="icon" type="image/png" sizes="16x16" href="https://royaleapi.com/static/img/favicon2/favicon-16x16.png?t=bdf872bec">
+<meta name="msapplication-TileColor" content="#ffffff">
+<meta name="msapplication-TileImage" content="https://royaleapi.com/static/img/favicon2/ms-icon-144x144.png?t=1a1a1059c">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="/manifest.json?url=http%3A//royaleapi.com/player/search/results%3Fq%3DMacle%26exact_match%3Don">
+<link rel="mask-icon" href="https://royaleapi.com/static/img/favicon/safari-pinned-tab.svg?t=c175d491c" color="#5bbad5">
+<link rel="shortcut icon" href="https://royaleapi.com/favicon.ico">
+<meta name="msapplication-config" content="https://royaleapi.com/static/img/favicon/browserconfig.xml?t=b1e51498c">
+<meta name="theme-color" content="#ffffff">
+<link rel="preload" href="https://cdns3.royaleapi.com/static/fonts/source-sans-pro-v14-latin-regular.woff2" as="font" type="font/woff2" crossorigin="">
+<link rel="preconnect" href="https://cdn.royaleapi.com" crossorigin="">
+<link rel="preconnect" href="https://www.google-analytics.com">
+<link rel="preconnect" href="https://a.pub.network/" crossorigin="">
+<link rel="preconnect" href="https://b.pub.network/" crossorigin="">
+<link rel="preconnect" href="https://c.pub.network/" crossorigin="">
+<link rel="preconnect" href="https://d.pub.network/" crossorigin="">
+<link rel="preconnect" href="https://c.amazon-adsystem.com" crossorigin="">
+<link rel="preconnect" href="https://s.amazon-adsystem.com" crossorigin="">
+<link rel="preconnect" href="https://secure.quantserve.com/" crossorigin="">
+<link rel="preconnect" href="https://rules.quantcount.com/" crossorigin="">
+<link rel="preconnect" href="https://pixel.quantserve.com/" crossorigin="">
+<link rel="preconnect" href="https://cmp.quantcast.com/" crossorigin="">
+<link rel="preconnect" href="https://btloader.com/" crossorigin="">
+<link rel="preconnect" href="https://api.btloader.com/" crossorigin="">
+<link rel="preconnect" href="https://confiant-integrations.global.ssl.fastly.net" crossorigin="">
+    <link rel="alternate" href="https://royaleapi.com/player/search/results?lang=de&amp;q=Macle&amp;exact_match=on" hreflang="de">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=en&amp;q=Macle&amp;exact_match=on" hreflang="en">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=es&amp;q=Macle&amp;exact_match=on" hreflang="es">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=fr&amp;q=Macle&amp;exact_match=on" hreflang="fr">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=it&amp;q=Macle&amp;exact_match=on" hreflang="it">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=ja&amp;q=Macle&amp;exact_match=on" hreflang="ja">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=ko&amp;q=Macle&amp;exact_match=on" hreflang="ko">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=nl&amp;q=Macle&amp;exact_match=on" hreflang="nl">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=pl&amp;q=Macle&amp;exact_match=on" hreflang="pl">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=pt&amp;q=Macle&amp;exact_match=on" hreflang="pt">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=ru&amp;q=Macle&amp;exact_match=on" hreflang="ru">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=vi&amp;q=Macle&amp;exact_match=on" hreflang="vi">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=zh&amp;q=Macle&amp;exact_match=on" hreflang="zh-Hans">
+<link rel="alternate" href="https://royaleapi.com/player/search/results?lang=zh_Hant&amp;q=Macle&amp;exact_match=on" hreflang="zh-Hant">
+<link rel="canonical" href="https://royaleapi.com/player/search/results?lang=en&amp;q=Macle&amp;exact_match=on">
+        <meta name="google" content="notranslate">
+    <!-- Rich Link Preview -->
+    <meta name="title" content="Player Search - RoyaleAPI">
+    <meta name="description" content="The definitive source about decks, players and teams in Clash Royale. Explore advanced statistics about decks and cards based on millions of games per week.">
+        <meta name="keywords" content="Clash Royale, stats, analytics, decks, esports, API, chests, RoyaleAPI, statistics, meta, best, cards, pro">
+    <meta property="og:title" content="Player Search - RoyaleAPI">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="RoyaleAPI">
+    <meta property="og:url" content="https://royaleapi.com/player/search/results?q=Macle&amp;exact_match=on">
+    <!-- End: Rich Link Preview -->
+        <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@RoyaleAPI">
+    <meta name="twitter:site:id" content="901152315301806080">
+    <meta name="twitter:creator" content="@RoyaleAPI">
+    <meta name="twitter:creator:id" content="901152315301806080">
+    <meta name="twitter:title" content="Player Search - RoyaleAPI">
+    <meta name="twitter:description" content="The definitive source about decks, players and teams in Clash Royale. Explore advanced statistics about decks and cards based on millions of games per week.">
+    <link rel="search" type="application/opensearchdescription+xml" title="RoyaleAPI" href="/opensearch.xml">
+            <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image" content="https://cdns3.royaleapi.com/cdn-cgi/image/w=1200,h=630/static/img/og/s68-og.jpg">
+    <meta name="twitter:image" content="https://cdns3.royaleapi.com/cdn-cgi/image/w=1200,h=630/static/img/og/s68-og.jpg">
+        <meta property="og:description" content="The definitive source about decks, players and teams in Clash Royale. Explore advanced statistics about decks and cards based on millions of games per week.">
+            <link rel="stylesheet" href="https://a.pub.network/royaleapi-com/cls.css">
+    <!-- App scripts -->
+            <link rel="stylesheet" href="https://cdn.royaleapi.com/static/fomantic-2.8/dist/semantic.min.css?t=b3492b24c">
+            <link rel="stylesheet" href="https://cdn.royaleapi.com/static/scss/app.css?t=6df1f55cc">
+            <link rel="stylesheet" href="https://cdn.royaleapi.com/static/scss/app_defer.css?t=54d496e5c" media="all" onload="this.media='all'; this.onload = null">
+<link rel="preconnect" href="https://edge.cdn-vitals.com" crossorigin="anonymous"><meta http-equiv="origin-trial" content="AlK2UR5SkAlj8jjdEc9p3F3xuFYlF6LYjAML3EOqw1g26eCwWPjdmecULvBH5MVPoqKYrOfPhYVL71xAXI1IBQoAAAB8eyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ=="><meta http-equiv="origin-trial" content="Amm8/NmvvQfhwCib6I7ZsmUxiSCfOxWxHayJwyU1r3gRIItzr7bNQid6O8ZYaE1GSQTa69WwhPC9flq/oYkRBwsAAACCeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ=="><meta http-equiv="origin-trial" content="A9nrunKdU5m96PSN1XsSGr3qOP0lvPFUB2AiAylCDlN5DTl17uDFkpQuHj1AFtgWLxpLaiBZuhrtb2WOu7ofHwEAAACKeyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><meta http-equiv="origin-trial" content="A93bovR+QVXNx2/38qDbmeYYf1wdte9EO37K9eMq3r+541qo0byhYU899BhPB7Cv9QqD7wIbR1B6OAc9kEfYCA4AAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><meta http-equiv="origin-trial" content="A1S5fojrAunSDrFbD8OfGmFHdRFZymSM/1ss3G+NEttCLfHkXvlcF6LGLH8Mo5PakLO1sCASXU1/gQf6XGuTBgwAAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXRhZ3NlcnZpY2VzLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9"><link href="https://securepubads.g.doubleclick.net/pagead/managed/dict/m202610220101/gpt" rel="compression-dictionary"><meta http-equiv="origin-trial" content="A7CQXglZzTrThjGTBEn1rWTxHOEtkWivwzgea+NjyardrwlieSjVuyG44PkYgIPGs8Q9svD8sF3Yedn0BBBjXAkAAACFeyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiUHJpdmFjeVNhbmRib3hBZHNBUElzIiwiZXhwaXJ5IjoxNjk1MTY3OTk5LCJpc1N1YmRvbWFpbiI6dHJ1ZSwiaXNUaGlyZFBhcnR5Ijp0cnVlfQ=="></head>
+<body class="" aria-hidden="false">
+<!-- Google Tag Manager (noscript) -->
+<!-- End Google Tag Manager (noscript) --><div id="__royaleapi_meta" data-country="IN"></div>
+<!-- Sidebar -->
+<!-- End Sidebar -->
+<!-- always on topnav -->
+    <div id="top_menu" class="ui borderless fluid menu fixed top">
+        <a class="brand item header" href="/">
+            <img src="https://cdn.royaleapi.com/static/img/branding/royaleapi-logo-128.png?t=feb800c3c" style="height:2rem; width: 2rem;" alt="RoyaleAPI">
+            <span class="mobile-hide" style="padding-left:0.7rem;">RoyaleAPI</span>
+        </a>
+        <div class="right compact menu">
+            <a class="mobile-hide nav item" href="/decks">
+Decks            </a>
+            <a class="mobile-hide nav item" href="/cards/popular?time=7d&amp;mode=grid&amp;cat=Ranked&amp;sort=rating">
+Cards            </a>
+            <a class="mobile-hide nav item" href="/players">
+Players            </a>
+            <a class="mobile-hide nav item" href="/clans">
+Clans            </a>
+            <a class="mobile-hide nav item" href="/blog">
+News            </a>
+            <!-- Unified search -->
+            <div id="search_all_button" class="link item">
+                <i class="search icon"></i>
+            </div>
+            <!-- login -->
+    <a id="user_button" class="link item" href="/login">
+        <i class="user icon"></i>
+    </a>
+            <!-- Saved -->
+            <div id="top-fave" class="ui dropdown item" tabindex="0">
+                <i class="heart icon"></i>
+                <div id="player_saved_menu" class="menu" tabindex="-1"><div class="header">Most visited players</div><a class="item" href="#">- Clear -</a></div>
+            </div>
+            <div id="sidebar-toggle" class="link item">
+                <i class="content icon"></i>
+            </div>
+        </div>
+    </div>
+<div class="pusher">
+<div id="global_search_segment" class="ui attached segment global_search hidden">
+    <div class="content">
+            <form class="ui form global_search" action="/player/search/results" method="get">
+        <div class="player_search_container ui fluid search">
+            <div class="field" data-name="player">
+                <label>Player</label>
+                <div class="ui icon large input">
+                    <input class="prompt" data-section="player" type="text" name="q" placeholder="Name or tag, e.g. C0G20PR2" autocomplete="off" style="">
+                    <i class="search link icon"></i>
+                </div>
+            </div>
+            <div class="results"></div>
+        </div>
+    </form>
+            <form class="ui form global_search" action="/clan" method="get">
+        <div class="clan_search_container ui fluid search">
+            <div class="field" data-name="clan">
+                <label>Clan</label>
+                <div class="ui icon large input">
+                    <input class="prompt" data-section="clan" type="text" name="q" placeholder="Name or tag, e.g. 9PJ82CRC" autocomplete="off" style="">
+                    <i class="search link icon"></i>
+                </div>
+            </div>
+            <div class="results"></div>
+        </div>
+    </form>
+            <form class="ui form global_search" action="/tournament" method="get">
+        <div class="tournament_search_container ui fluid search">
+            <div class="field" data-name="tournament">
+                <label>Tournament</label>
+                <div class="ui icon large input">
+                    <input class="prompt" data-section="tournament" type="text" name="q" placeholder="Name or tag" autocomplete="off" style="">
+                    <i class="search link icon"></i>
+                </div>
+            </div>
+            <div class="results"></div>
+        </div>
+    </form>
+            <form class="ui form global_search" action="/blog/search" method="get">
+        <div class="blog_search_container ui fluid search">
+            <div class="field" data-name="blog">
+                <label>Blog</label>
+                <div class="ui icon large input">
+                    <input class="prompt" data-section="blog" type="text" name="q" placeholder="Search" autocomplete="off" style="">
+                    <i class="search link icon"></i>
+                </div>
+            </div>
+            <div class="results"></div>
+        </div>
+    </form>
+        <button class="ui icon button" id="global_search_close_button">
+            <i class="close icon"></i>
+        </button>
+    </div>
+</div>
+<div id="topbar">
+    <div class="ui attached segment">
+        <div class="nav_aux_container">
+            <div class="creator_code_segment item">
+                <img class="ui mini image floated left margin0" src="https://cdn.royaleapi.com/static/img/ui/creator-code_128-fs8.png?t=a3b3881bc" alt="Creator Code" style="height:1.5rem;width:auto;">
+                <!--googleoff: all-->Creator Code<!--googleon: all-->
+                <strong>RoyaleAPI</strong>
+            </div>
+            <div class="language_selector_segment item">
+<div id="language_sidebar_button" class="link item language_button" style="text-align: right;">
+            <i class="us flag"></i>
+            English
+</div>            </div>
+        </div>
+        <div class="nav_container main">
+            <a class="item" href="/decks/popular">
+Decks            </a>
+            <a class="item" href="/deck-builder">
+Deck Builder            </a>
+            <a class="item" href="/cards/popular?time=7d&amp;mode=grid&amp;cat=Ranked&amp;sort=rating">
+Cards            </a>
+            <a class="item" href="/players">
+Players            </a>
+            <a class="item" href="/clans">
+Clans            </a>
+            <a class="item" href="/blog">
+News + Blog            </a>
+            <a class="item" href="/strategy">
+Strategy            </a>
+            <a class="item" href="/tournaments">
+Tournaments            </a>
+<a class="item" href="/decks/winner/crl-2026-20win">
+        <div class="icon_container" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64/static/img/ui/crl.png);"></div>
+Winners <span class="crl_2026_20win_livecount">777</span>
+    </a>
+    <a class="item" href="/decks/popular?time=1d&amp;sort=rating&amp;type=CRL20_2026">
+        <div class="icon_container " style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64,format=auto/static/img/ui/crl.png); "></div>
+            Decks 
+    </a>
+    <a class="item" href="/decks/popular?time=1d&amp;sort=rating&amp;inc=electro-giant-ev1">
+        <div class="icon_container icon-card-ev1-legendary" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/q=80,w=75,h=90,format=auto/static/img/cards/v11-a8e42334/electro-giant-ev1.png);"></div>
+Decks    </a>
+    <a class="item" href="/decks/popular?time=1d&amp;sort=rating&amp;inc=electro-wizard-hero">
+        <div class="icon_container icon-card-ev1-legendary" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/q=80,w=75,h=90,format=auto/static/img/cards/v11-a8e42334/electro-wizard-hero.png);"></div>
+Decks    </a>
+        <a class="item" href="/players/gt/leaderboard/latest">
+        <div class="icon_container icon-card-ev1-legendary" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64/static/img/ui/global-tournament.png);"></div>
+        Leaderboard
+    </a>
+        <a class="item" href="/league/crl/leaderboard_2026">
+        <div class="icon_container icon-card-ev1-legendary" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64/static/img/ui/crl.png);"></div>
+        Leaderboard
+    </a>
+    <a class="item" href="/free">
+        <div class="icon_container " style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64/static/img/icon/gift-1.png);"></div>
+        Rewards
+    </a>
+    <a class="item reward_promo attention-banner" href="/free">
+        <div class="icon_container" style="background-image:url(https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64/static/img/ui/emotes-fs8.png)"></div>
+        Free Emotes
+    </a>
+        </div>
+        <h5 class="ui header secondary">
+            RoyaleAPI
+        </h5>
+        <div class="nav_container secondary">
+            <a class="item" href="/about">
+About Us            </a>
+            <a class="item" href="/donate">
+Donate            </a>
+            <a class="item" href="https://brand.royaleapi.com" target="_blank">
+Brand            </a>
+            <a class="item" href="https://help.royaleapi.com" target="_blank">
+Help            </a>
+            <a class="item" href="https://support.royaleapi.com" target="_blank">
+Support            </a>
+            <a class="item" href="/contact">
+Contact Us            </a>
+            <a class="item" href="/privacy">Privacy Policy</a>
+            <a class="item" href="/tos">Terms of Service</a>
+        </div>
+        <h5 class="ui header secondary topmargin0">
+            Social
+        </h5>
+        <div class="nav_container secondary">
+            <a class="item" href="https://twitter.com/RoyaleAPI">
+                <i class="icon icon-royaleapi icon-twitter">        
+</i>
+                X (Twitter)
+            </a>
+            <a class="item" href="https://facebook.com/RoyaleAPI">
+                <i class="facebook icon"></i>
+                Facebook
+            </a>
+            <a class="item" href="https://instagram.com/RoyaleAPI">
+                <i class="instagram icon"></i>
+                Instagram
+            </a>
+            <a class="item" href="https://www.reddit.com/r/RoyaleAPI/">
+                <i class="reddit icon"></i>
+                Reddit
+            </a>
+            <a class="item" href="https://youtube.com/c/RoyaleAPI">
+                <i class="youtube icon"></i>
+                YouTube
+            </a>
+            <a class="item" href="https://discord.royaleapi.com">
+                <i class="discord icon"></i>
+                Discord
+            </a>
+            <a class="item" href="https://github.com/RoyaleAPI">
+                <i class="github icon"></i>
+                Github
+            </a>
+            <a class="item" href="https://www.tiktok.com/@royaleapi1">
+                <i class="icon icon-royaleapi">        
+</i>
+                Tiktok
+            </a>
+        </div>
+    </div>
+</div>    <!--googleoff: all-->
+    <!--googleon: all-->
+        <!--googleoff: all-->
+        <div class="ui attached error message margin0 adblock_message hidden">
+        </div>
+        <!--googleon: all-->
+    <!-- Page Contents -->
+    <div id="page_content_container">
+        <div id="fullpage_screenshot_branding" class="ui attached borderless stackable menu" style="display:none;">
+            <div class="ui header item">
+                <img class="ui small image" src="https://cdn.royaleapi.com/static/img/branding/royaleapi-logo-128.png?t=feb800c3c">
+                RoyaleAPI
+            </div>
+            <div class="item">https://royaleapi.com/player/search/results?q=Macle&amp;exact_match=on</div>
+            <div id="fullpage_screenshot_datetime" class="right item"></div>
+        </div>
+        <div id="page_content">
+<form id="player_search_attached_form" class="ui fluid form" action="/player/search/results" style="margin:0;">
+    <div class="ui attached blue inverted menu borderless nav_menu players__nav_menu">
+        <a class="header item" href="/players" style="flex:1;">
+Players        </a>
+        <div class="ui search item mobile-hide" style="flex:5;">
+            <div class="ui transparent icon input">
+                <input id="player_search_input" name="q" class="prompt" type="text" placeholder="Name or tag, e.g. C0G20PR2" autocomplete="off" style="">
+                <i class="search link inverted icon"></i>
+            </div>
+        <div class="results"></div></div>
+        <div class="ui two column dropdown item" style="flex:1;" tabindex="0">
+            <span>Leaderboard</span>
+            <i class="dropdown icon"></i>
+            <div class="menu" tabindex="-1">
+    <div class="header header_divider" style="">
+        Ladder
+    </div>
+                <a class="item" href="/players/leaderboard">
+Ranked                </a>
+                <a class="item" href="/players/leaderboard_history">
+Leaderboard History                </a>
+                <a class="item" href="/players/trail/latest/mt">
+Merge Tactics                </a>
+                <a class="item" href="/players/trail/latest/chess">
+Chess                </a>
+                <a class="item" href="/players/trail/latest/chaos">
+CHAOS                </a>
+                <a class="item" href="/players/trail/latest/md">
+Mega Draft                </a>
+                <a class="item" href="/players/trail/latest/retro">
+Retro Royale                </a>
+                <a class="item" href="/players/2v2">
+2v2 League                </a>
+                <a class="item" href="/players/goblin/leaderboard">
+Goblin                </a>
+    <div class="header header_divider" style="">
+        Challenge
+    </div>
+                <a class="item" href="/players/gc">
+GC - Recent                </a>
+                <a class="item" href="/players/12wins-cc">
+CC - Recent                </a>
+                <a class="item" href="/players/gc_12wins">
+GC - Lifetime                </a>
+                <a class="item" href="/players/cc_12wins">
+CC - Lifetime                </a>
+                <a class="item" href="/players/gt/leaderboard/latest">
+Global Tournament                </a>
+                <a class="item" href="/players/gt/leaderboard/list">
+Past GTs                </a>
+    <div class="header header_divider" style="">
+        Earnings
+    </div>
+                <a class="item" href="/players/earnings/individual">
+Individual                </a>
+                <a class="item" href="/players/earnings/team">
+Team                </a>
+    <div class="header header_divider" style="">
+        Stats
+    </div>
+                <a class="item" href="/players/level/16">
+Tower Level                </a>
+                <a class="item" href="/players/cards_won">
+Cards Won                </a>
+                <a class="item" href="/players/donations">
+Donations                </a>
+                <a class="item" href="/players/battle_count">
+Total Games                </a>
+                <a class="item" href="/players/three_crown_wins">
+Three-Crown Wins                </a>
+                <a class="item" href="/players/emote_score">
+BM Score                </a>
+                <a class="item" href="/players/stats/card_collection">
+Card Collection                </a>
+                <a class="item" href="/players/mastery/levels">
+Mastery Levels                </a>
+                <a class="item" href="/players/mastery/completion">
+Mastery Completion                </a>
+                <a class="item" href="/players/stats/emote_collection">
+Emote Collection                </a>
+                <a class="item" href="/players/stats/banner_collection">
+Banner Collection                </a>
+    <div class="header header_divider" style="">
+        Social
+    </div>
+                <a class="item" href="/players/twitter">
+                    Twitter
+                </a>
+                <a class="item" href="/players/youtube">
+                    YouTube
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="ui error message attached segment" style=" border:none;">
+        Please enter a value
+    </div>
+</form>
+<div class="ui inverted attached basic segment background-fade-right player_search_results__player_header__container" style="background-color:#0f619b;">
+<div class="ui inverted attached secondary pointing menu" style="margin:-0.5rem 0 1rem -1rem;">
+    <a class=" item" href="/players/leaderboard">
+Ranked    </a>
+    <a class=" item" href="/players/leaderboard_history">
+History    </a>
+    <a class=" item" href="/players/12wins">
+Challenge    </a>
+    <a class=" item" href="/players/level/16">
+Level    </a>
+    <a class=" item" href="/players/battle_count">
+Stats    </a>
+</div>    <div class="players_nav_with_page_title__container">
+        <div class="page_header">
+            <h1 class="page_title">
+                    Player Search
+            </h1>
+        </div>
+        <div class="icon">        </div>
+    </div>
+</div>
+    <div id="player-bg"></div>
+    <div class="ui hidden divider mobile-hide"></div>
+    <div class="player_search_results__container" id="sticky_context">
+        <div class="ui container sidemargin0 main_content">
+            <h4 class="ui attached header">
+                Found 8 possible matches from database.
+                <div class="sub header" style="margin-top:0.5rem;">
+                    Please search by player tag if you cannot find the player by name.
+                </div>
+            </h4>
+            <div class="ui attached segment">
+                <form class="ui form" action="/player/search/results">
+                    <div class="field">
+                        <div class="ui fluid icon input">
+                            <input name="q" type="text" value="Macle" autocomplete="off" style="">
+                            <i class="search link icon"></i>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <div class="ui checkbox">
+                            <input type="checkbox" name="exact_match" checked="" style="">
+                            <label>
+Case-sensitive exact name match                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">1</div>
+                    <div>
+                        <a class="header" href="/player/98VQRGCQ">
+                                Macle
+                            </a>
+                            <div class="player_tag">#98VQRGCQ</div>
+                                <a href="/clan/QCJPGQU2" class="meta">
+                                    Kings &amp; Queens&nbsp;&nbsp;#QCJPGQU2
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">2</div>
+                    <div>
+                        <a class="header" href="/player/2V99R0PJY">
+                                Macle
+                            </a>
+                            <div class="player_tag">#2V99R0PJY</div>
+                                <a href="/clan/QCR0PQUL" class="meta">
+                                    gabe owners&nbsp;&nbsp;#QCR0PQUL
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">3</div>
+                    <div>
+                        <a class="header" href="/player/PPPLRPPY9">
+                                Macle
+                            </a>
+                            <div class="player_tag">#PPPLRPPY9</div>
+                                <a href="/clan/GU8PQJG2" class="meta">
+                                    LoS cHuKiS&nbsp;&nbsp;#GU8PQJG2
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">4</div>
+                    <div>
+                        <a class="header" href="/player/V8VP2U9G0">
+                                Macle
+                            </a>
+                            <div class="player_tag">#V8VP2U9G0</div>
+                                <a href="/clan/2CP8U0JJ" class="meta">
+                                    DABESTCLAN&nbsp;&nbsp;#2CP8U0JJ
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">5</div>
+                    <div>
+                        <a class="header" href="/player/JYVU990QV">
+                                Macle
+                            </a>
+                            <div class="player_tag">#JYVU990QV</div>
+                                <a href="/clan/LL2VCLGR" class="meta">
+                                    Man in a Wan&nbsp;&nbsp;#LL2VCLGR
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">6</div>
+                    <div>
+                        <a class="header" href="/player/2RV0PVL9R">
+                                Macle
+                            </a>
+                            <div class="player_tag">#2RV0PVL9R</div>
+                                <a href="/clan/QPR22UU9" class="meta">
+                                    Destroyers⁵⁷⁸⁶&nbsp;&nbsp;#QPR22UU9
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">7</div>
+                    <div>
+                        <a class="header" href="/player/G00GYL0GR">
+                                Macle
+                            </a>
+                            <div class="player_tag">#G00GYL0GR</div>
+                                <a href="/clan/YGL8VQGY" class="meta">
+                                    京朝6435院&nbsp;&nbsp;#YGL8VQGY
+                                </a>
+                    </div>
+                </div>
+                <div class="ui attached segment player_search_results__result_container">
+                    <div class="index">8</div>
+                    <div>
+                        <a class="header" href="/player/82Q8QYCJ">
+                                Macle
+                            </a>
+                            <div class="player_tag">#82Q8QYCJ</div>
+                    </div>
+                </div>
+                <div class="ui attached bottom ui info message">
+<p><strong>To prevent abuse, we only show the top 100 most relevant results.</strong></p>
+<p>If you can’t find your account by name search, searching by player tag is the only 100% fool-proof way of
+fetching your account.</p>    </div>
+        </div>
+        <div class="side_content" style="height: 986.312px;">
+            <div class="sticky_container ui sticky">
+                            <div class="ui  ad" data-text="skyscraper">
+                <div class="__royaleapi_fs_sky_160x600" data-freestar-ad="__160x600" id="__royaleapi_fs_sky_160x600__0" name="royaleapi_160x600">
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+    <div class="ui hidden divider mobile-hide"></div>
+        </div>
+    </div>
+    <!-- Footer -->
+<div class="ui green inverted attached borderless segment creator_code_segment" style="border:0">
+        <div class="ui container">
+    <img class="ui mini image floated left" src="https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64,format=auto/static/img/ui/creator-code_128.png" alt="Creator Code" style="height:auto;width:1.5rem;">
+Support us with creator code <strong>RoyaleAPI</strong>
+        </div>
+</div>
+<a href="https://store.supercell.com/clashroyale/product/pass-royale/ad6b6124?boost=royaleapi">
+    <div class="ui purple inverted attached borderless segment sc_store_segment" style="border:0">
+            <div class="ui container">
+        <img class="ui mini image floated left" src="https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64,format=auto/static/img/ui/pass/pass-diamond-icon.png" alt="Diamond Pass" style="height:auto;width:1.5rem;">
+        Buy Diamond Pass at Supercell Store with perks
+            </div>
+    </div>
+</a>
+<div class="ui blue inverted attached borderless segment" style="border:0">
+    <a class="ui container" href="/donate" style="color:white;">
+        <img class="ui mini image floated left" src="https://cdns3.royaleapi.com/cdn-cgi/image/w=64,h=64,format=auto/static/img/ui/king-blue.png" alt="Donate" style="height:auto;width:1.5rem;">
+        <strong>Donate</strong> to support us
+    </a>
+</div>
+<div class="ui inverted vertical footer attached segment">
+    <!-- Bottom ad -->
+    <div class="ui hidden divider"></div>
+    <div class="ui container">
+        <div class="ui stackable inverted grid">
+            <div class="row">
+                <div class="four wide column">
+                    <div class="ui stackable doubling inverted two column grid">
+                        <div class="column">
+                            <div class="ui inverted link list">
+                                <h4 class="ui inverted tiny header">RoyaleAPI</h4>
+                                    <a class="item" href="/">
+                                        Home
+                                    </a>
+                                    <a class="item" href="/decks">
+                                        Decks
+                                    </a>
+                                    <a class="item" href="/cards">
+                                        Cards
+                                    </a>
+                                    <a class="item" href="/players">
+                                        Players
+                                    </a>
+                                    <a class="item" href="/clans">
+                                        Clans
+                                    </a>
+                                    <a class="item" href="/esports">
+                                        Esports
+                                    </a>
+                                    <a class="item" href="/strategy">
+                                        Strategy
+                                    </a>
+                                    <a class="item" href="/blog">
+                                        Blog
+                                    </a>
+                                    <a class="item" href="/news">
+                                        News
+                                    </a>
+                                    <a class="item" href="/tournaments">
+                                        Tournaments
+                                    </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="four wide column">
+                    <div class="ui stackable inverted equal width column grid">
+                        <div class="column">
+                            <div class="ui inverted link list">
+                                <h4 class="ui inverted tiny header">Help</h4>
+                                <a class="item" href="/about">About Us</a>
+                                <a class="item" href="/faq">FAQ</a>
+                                <a class="item" href="/business-inquiries">
+Business Inquiries</a>
+                                <a class="item" href="https://discuss.royaleapi.com/c/feature-request/7">
+Feature Requests                                </a>
+                                <a class="item" href="/privacy">
+Privacy Policy</a>
+                                <a class="item" href="/tos">
+Terms of Service</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="social_column" class="eight wide column">
+                    <h4 class="ui inverted tiny header">Social</h4>
+                        <a class="social_icon_link" href="https://twitter.com/RoyaleAPI">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/twitter.svg?t=46fc03a4c" data-content="Twitter">
+                        </a>
+                        <a class="social_icon_link" href="https://www.facebook.com/RoyaleAPI">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/facebook.svg?t=1ba31c3ec" data-content="Facebook">
+                        </a>
+                        <a class="social_icon_link" href="https://instagram.com/RoyaleAPI">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/instagram.svg?t=10749341c" data-content="Instagram">
+                        </a>
+                        <a class="social_icon_link" href="https://discord.royaleapi.com">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/discord.svg?t=0e4faa34c" data-content="Discord">
+                        </a>
+                        <a class="social_icon_link" href="https://github.com/RoyaleAPI">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/github.svg?t=252853c9c" data-content="Github">
+                        </a>
+                        <a class="social_icon_link" href="https://www.reddit.com/r/RoyaleAPI/">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/reddit.svg?t=37665964c" data-content="Reddit">
+                        </a>
+                        <a class="social_icon_link" href="https://youtube.com/c/RoyaleAPI">
+                            <img class="social_icon popup" src="https://cdn.royaleapi.com/static/img/brands/circle/youtube.svg?t=b87ee8c8c" data-content="Youtube">
+                        </a>
+                </div>
+            </div>
+            <div class="row">
+                <div class="column">
+                    <a href="/donate" class="ui blue button">Donate</a>
+                </div>
+            </div>
+        </div>
+        <div class="ui divider"></div>
+        <div class="ad_legal">
+            <!-- HTML for geo depending button -->
+            <button id="pmLink" class="ui inverted secondary button">Privacy Manager</button>
+        </div>
+        <div class="ui vertical segment">
+            <div class="ui inverted meta disclaimer supercell_fan_content_policy_disclaimer">
+                <p>
+                    This content is not affiliated with, endorsed, sponsored, or specifically approved by Supercell and Supercell is not responsible for it. For more information see Supercell’s Fan Content Policy.
+                    &nbsp;
+                    <a href="https://www.supercell.com/fan-content-policy" target="_blank" rel="noopener noreferrer">
+                        <i class="link external icon"></i>
+                    </a>
+                </p>
+            </div>
+            <div class="copyright">
+                ©2025 RoyaleAPI. All rights reserved. RoyaleAPI® is a registered trademark of
+                <a href="https://smluniverse.com" rel="noopener noreferrer" target="_blank">SML Universe Limited</a>.
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+<div id="language_modal" class="ui modal">
+    <i class="close icon"></i>
+    <div class="header"><i class="language large icon"></i></div>
+    <div class="content">
+        <div class="description">
+            <div class="language_modal_container">
+                    <a class="item active" href="/language/en">
+                        <i class="us flag"></i>
+                        English
+                    </a>
+                    <a class="item " href="/language/es">
+                        <i class="es flag"></i>
+                        Español
+                    </a>
+                    <a class="item " href="/language/fr">
+                        <i class="fr flag"></i>
+                        Français
+                    </a>
+                    <a class="item " href="/language/de">
+                        <i class="de flag"></i>
+                        Deutsch
+                    </a>
+                    <a class="item " href="/language/it">
+                        <i class="it flag"></i>
+                        Italiano
+                    </a>
+                    <a class="item " href="/language/pl">
+                        <i class="pl flag"></i>
+                        Polski
+                    </a>
+                    <a class="item " href="/language/pt">
+                        <i class="br flag"></i>
+                        Português
+                    </a>
+                    <a class="item " href="/language/ru">
+                        <i class="ru flag"></i>
+                        Русский
+                    </a>
+                    <a class="item " href="/language/nl">
+                        <i class="nl flag"></i>
+                        Nederlands
+                    </a>
+                    <a class="item " href="/language/vi">
+                        <i class="vn flag"></i>
+                        Tiếng Việt
+                    </a>
+                    <a class="item " href="/language/ja">
+                        <i class="jp flag"></i>
+                        日本語
+                    </a>
+                    <a class="item " href="/language/ko">
+                        <i class="kr flag"></i>
+                        한국어
+                    </a>
+                    <a class="item " href="/language/zh">
+                        <i class="cn flag"></i>
+                        简体中文
+                    </a>
+                    <a class="item " href="/language/zh_Hant">
+                        <i class="hk flag"></i>
+                        繁體中文
+                    </a>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="qrcode_modal" class="ui tiny modal">
+    <i class="close icon"></i>
+    <div class="header">
+        <div class="title"></div>
+    </div>
+    <div id="qrcode_content" class="content"></div>
+</div>
+<div class="vm-placement" data-id="610ba8100830e344515f1000" style="display:none"></div>
+        <div id="eb736a173ff064caf38c8585e4a30344" style="display: none;"></div>
+                        <div class="__royaleapi_fs_bottom_rail">
+        </div>
+                        <div class="__royaleapi_fs_bottom_rail">
+        </div>
+    <!--googleoff: all-->
+    <div class="ad_block_message_mobile" style="display:none;">
+        😭 <strong>Blocking ads rigs matchmaking.</strong>
+        We depend on advertising revenue to maintain our servers. Please disable your adblocker to help keep us running.
+    </div>
+    <div class="ad_block_message_desktop" style="display:none;">
+        😭 <strong>Blocking ads rigs matchmaking.</strong>
+        We depend on advertising revenue to maintain our servers. Please disable your adblocker to help keep us running.<br>
+        🥰 <strong>You can also disable ads by donating to us.</strong>
+        Patrons who donate US$30/month via Patreon or who have supported us with a lifetime $100 in donations via PayPal can enjoy ad-free browsing forever.
+        <a href="/donate">Details</a>
+    </div>
+    <!--googleon: all-->
+<!-- NewRelics -->
+<!-- END: NewRelics -->
+<!-- NewRelics -->
+<div data-primis-wrapper="1"><div id="primisPlayerContainerDiv" data-primis-wrapper="1" class="primisslate"><div id="primis_container_div_6ae0a5b2e3d9d" data-primis-wrapper="1" style="position: relative;"><div id="primis_playerSekindoSPlayer6ae0a5b2e3d99" style="overflow: hidden; position: fixed; height: 168.75px; box-shadow: rgba(0, 0, 0, 0.2) 1px 1px 6px 3px; border-radius: 8px; margin-top: 58px; z-index: 2147483647; right: -400px; bottom: 105px; width: 300px;"><div id="Player-Div-SekindoSPlayer6ae0a5b2e3d99" style="width: max-content; height: max-content; top: auto; left: auto; position: static; transform: none;"><div id="closeContainer" style="display: none; height: 24px; width: 100%; position: absolute; pointer-events: auto; z-index: 5; top: -24px; border-radius: 5px 5px 0px 0px;"><div id="closeIcon" style="height: 15px; width: 15px; position: relative; float: right;"><div id="closeIconHit" style="height: 30px; width: 30px; pointer-events: auto; position: absolute; top: 0px; left: 0px; cursor: pointer; margin: -7.5px;"></div></div></div><div id="Video-Div-SekindoSPlayer6ae0a5b2e3d99" style="position: relative;"><div id="Video-iFrame-SekindoSPlayer6ae0a5b2e3d99" style="overflow: hidden; position: relative; width: 300px; height: 168.75px;"><div id="videoContainerDiv" style="width: 100%; height: 100%; background: black; position: relative; z-index: 1;"><div style="width: 100%; height: 100%;"><video playsinline="" crossorigin="anonymous" style="width: 100%; height: 100%;"></video></div></div><div id="adContainerDiv" style="width: auto; height: auto; position: absolute; margin: auto; display: block; z-index: 2; top: 0px; left: 0px; cursor: pointer; background: black;"><div id="adVpaid" style="width: 100%; height: 100%; position: absolute; margin: auto; display: block; top: 0px; left: 0px; cursor: pointer; background: black;"></div><div id="adIma" style="width: 100%; height: 100%; position: absolute; margin: auto; display: block; top: 0px; left: 0px; cursor: pointer; background: black;"></div><div id="adDisplayBanner" style="width: 100%; height: 100%; position: absolute; margin: auto; display: block; top: 0px; left: 0px; cursor: pointer; background: black;"><div id="displayBannerSlotContainer" style="width: 100%; height: 100%; margin-left: auto; margin-right: auto; z-index: 0; position: absolute; overflow: hidden;"></div></div></div><div id="layoutContainerDiv" style="width: 100%; height: 100%; position: absolute; display: inline-block; z-index: 3; top: 0px; left: 0px; pointer-events: none;"><div id="layoutDesign" style="opacity: 1; overflow: hidden; position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; z-index: 111; pointer-events: none;"><div id="adCover" style="position: absolute; top: 0px; left: 0px; z-index: 100; width: 100%; height: 100%; display: none; visibility: hidden; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div><div id="transparentCover" style="cursor: pointer; width: 100%; height: 100%; visibility: visible; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="transparentInner" style="visibility: inherit; width: 100%; height: 100%; background: linear-gradient(black, transparent, transparent, black); opacity: 0; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div><div id="bottomElements" style="width: 100%; bottom: 0px; left: 0px; position: absolute; opacity: 1; visibility: visible; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="soundControl" style="bottom: 11px; left: 37px; position: absolute; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="soundOnBtn" style="width: 20px; height: 20px; bottom: 0px; position: absolute; display: none; cursor: pointer; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="soundOnBtnIco" style="width: 60%; cursor: pointer; filter: drop-shadow(rgba(0, 0, 0, 0.6) 0px 0px 2px); user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div><div id="soundOffBtn" style="width: 20px; height: 20px; bottom: 0px; position: absolute; cursor: pointer; display: flex; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="soundOffBtnIco" style="width: 60%; filter: drop-shadow(rgba(0, 0, 0, 0.6) 0px 0px 2px); user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div></div><div id="playBtn" style="visibility: visible; width: 20px; height: 20px; bottom: 11px; left: 12px; position: absolute; z-index: 1; cursor: pointer; display: flex; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="playBtnIcon" style="width: 52%; filter: drop-shadow(rgba(0, 0, 0, 0.6) 0px 0px 2px); user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div><div id="pauseBtn" style="visibility: visible; width: 20px; height: 20px; bottom: 11px; left: 12px; position: absolute; z-index: 1; cursor: pointer; display: flex; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"><div id="pauseBtnIcon" style="width: 60%; filter: drop-shadow(rgba(0, 0, 0, 0.6) 0px 0px 2px); user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div></div><div id="ad_label_element" style="display: flex; position: absolute; top: 12px; right: 12px; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;"></div></div><div id="dcAdCover" style="position: absolute; top: 0px; left: 0px; z-index: 200; cursor: pointer; width: 100%; height: 100%; display: none; visibility: visible; pointer-events: auto;"></div></div><div id="adBreakDiv" style="width: 100%; height: 100%; position: absolute; display: block; z-index: 4; top: 0px; left: 0px; cursor: pointer;"><div id="adBreakPreloader" style="display: block;"></div></div></div><div id="pixelsDiv" style="width: 0px; height: 0px;"><div></div><div></div><div></div><div></div><img src="https://pl.primis.tech/live/liveView.php?hash=ozcmPTEznXRiPTEzqzyxX2V2ZW50PTUjJaNypaZypyRcoWU9MTp5MmEjNmM3OCZ2nWRspGkurWVlVzVlPTMhMS4jJaM9MTE4MwE5JaN0YT0jJat9NDAjJax9MwplJaZcZF9jYXNmRG9gYWyhPXJirWFfZWFjnS5wo20zp3VvSWQ9pz95YWkyYXBcLzNioSZxZWJ1Z0yhZz9loWF0nW9hPSZcp0FjpD0jJaNxn3Y9JaBfYXyfnXN0SWQ9MmM2JaJcPTZDNwx3NwY1NTM3NDYkNmQ3MmqDNmM2QwMkN0I1NDMjN0Q3QwY0MmImMDMlMmYlRDMkMmAlRDMlMmp1RwMkMmU3RDqCNmMmMTM3MmImNwM0MmYmNTMlN0Q3QwQmMmEmNTM5N0Q3QwUmNwM2RDM5MmU1OTU3Nmt2QmU5NTt0MwpjNEM2RDRFNmY2MwUkM0QmRDqEN0I2MwYmNwt3MwZGNxQ2NTqEN0I3MTY0NwU3MmZCNmQ2RwpjN0Q3QwZGNmp2OTZFNwQ2Rwp3NmM3RDqCNTtmNDMjMmA3RDqCNTxmMwM3MmI3RDqCNwYmMTqEN0I0QmMlMmAmNwMjMmQ3REZFRxUzZGyunWQ9JzN1ZGx9pGyjLU1UQW1Mq0UmTUM0MU1fNGgOq1UyM0QzqXNypyVBPU1irzyfoGEyMxY1LwAyMwAyMwuXnW5xo3qmJTIjTyQyMwAkMC4jJTNCJTIjV2yhNwQyM0IyMwB4NwQyMwxyMwBBpHBfZVqyYxgcqCUlRwUmNl4mNvUlMCUlOEgIVE1MJTJDJTIjoGyeZSUlMEqyY2giJTI5JTIjQ2ulo21yJTJGMTU2LwAhMC4jJTIjU2FzYXJcJTJGNTM3LwM2JzNmqXVcZD02YWUjYTVvMzI0ZzRzJzNioaRyoaRGnWkySWQ9MCZgZWRcYVBfYXyMnXN0SWQ9MCZgZWRcYUkcp3RJZD0jJzqxpHI9MCZaZHBlQ29hp2VhqD0znXNXZVBup3NHZHBlPTEzY2NjYT0jJzNwpGFDo25mZW50PSZapHBDo25mZW50PSZapHBTnWQ9JzNvqXN0ZXI9MTp5MmEjNmM3OTA2MCZ1nWQ9U2VenW5xo1NQoGF5ZXI2YWUjYTVvMzUmZDx5JaB1YyVloD1bqHRjplUmQSUlRvUlRaJirWFfZWFjnS5wo20yMxZjoGF5ZXIyMxZmZWFlY2tyMxZlZXN1oHRmJTNGpSUmRE1uY2kyJTI2ZXuuY3RsoWF0Y2tyM0RiovZzoG9uqFN0YXR1pm1zYWkmZSZynWRmpD1jpzVvnWQzpHucZD00ZTqzNmI3MzZvMDVwYwFvMzRvM2JxZGMkZWY3MTp5NA==&amp;stnaInterval=0" height="0px" width="0px" style="display: none !important;"><img src="https://pl.primis.tech/live/liveView.php?hash=ozcmPTEznXRiPTEzqzyxX2V2ZW50PTM2JaNypaZypyRcoWU9MTp5MmEjNmM3OCZ2nWRspGkurWVlVzVlPTMhMS4jJaM9MTE4MwE5JaN0YT0jJat9NDAjJax9MwplJaZcZF9jYXNmRG9gYWyhPXJirWFfZWFjnS5wo20zp3VvSWQ9pz95YWkyYXBcLzNioSZxZWJ1Z0yhZz9loWF0nW9hPSZcp0FjpD0jJaNxn3Y9JaBfYXyfnXN0SWQ9MmM2JzN1ZGx9pGyjLU1UQW1Mq0UmTUM0MU1fNGgOq1UyM0QzqXNypyVBPU1irzyfoGEyMxY1LwAyMwAyMwuXnW5xo3qmJTIjTyQyMwAkMC4jJTNCJTIjV2yhNwQyM0IyMwB4NwQyMwxyMwBBpHBfZVqyYxgcqCUlRwUmNl4mNvUlMCUlOEgIVE1MJTJDJTIjoGyeZSUlMEqyY2giJTI5JTIjQ2ulo21yJTJGMTU2LwAhMC4jJTIjU2FzYXJcJTJGNTM3LwM2JzNmqXVcZD02YWUjYTVvMzI0ZzRzJzNioaRyoaRGnWkySWQ9MCZgZWRcYVBfYXyMnXN0SWQ9MCZgZWRcYUkcp3RJZD0jJzqxpHI9MCZaZHBlQ29hp2VhqD0znXNXZVBup3NHZHBlPTEzY2NjYT0jJzNwpGFDo25mZW50PSZapHBDo25mZW50PSZapHBTnWQ9JzNvqXN0ZXI9MTp5MmEjNmM4MTU2NlZ1nWQ9U2VenW5xo1NQoGF5ZXI2YWUjYTVvMzUmZDx5JaB1YyVloD1bqHRjplUmQSUlRvUlRaJirWFfZWFjnS5wo20yMxZjoGF5ZXIyMxZmZWFlY2tyMxZlZXN1oHRmJTNGpSUmRE1uY2kyJTI2ZXuuY3RsoWF0Y2tyM0RiovZzoG9uqFN0YXR1pm1zYWkmZSZynWRmpD1jpzVvnWQzpHucZD1wMGJvOTuyNTFvNDNvOWEkZzImZzFxNDJyMWY5MmAjMj==&amp;stnaInterval=2" height="0px" width="0px" style="display: none !important;"></div></div></div></div></div></div></div><div class="fs-sticky-footer" id="fs-sticky-footer" style="min-height: 100px; background-color: rgba(247, 247, 247, 0.9);"><div class="fs-sticky-parent fs-sticky-wrapper" id="fs-slot-footer-wrapper" style="visibility: inherit; z-index: inherit;"><div class="fs-sticky-slot-element" id="royaleapi_sticky_footer" name="royaleapi_sticky_footer" data-fs-ancillary="false" style="visibility: inherit; background-color: rgba(247, 247, 247, 0.9);"></div><button aria-label="Close Ad" tabindex="0" class="fs-close-button fs-close-button-sticky" style="visibility: inherit;"></button><div class="__fs-branding" style="visibility: inherit;"><a target="_blank"><img src="https://a.pub.network/core/imgs/fslogo-green.svg" alt="Freestar"></a></div></div></div><div style="position: relative;"><div class="fs-sticky-popup-container" style="display: none;"><a href="https://ads.freestar.com/?utm_campaign=branding&amp;utm_medium=stickyFooter&amp;utm_source=royaleapi.com&amp;utm_content=royaleapi_sticky_footer" target="_blank" rel="noreferrer" style="color: rgb(153, 153, 153);">Freestar.com</a></div></div><link rel="stylesheet" type="text/css" href="https://live.primis.tech/content/video/css/primisslate.min.css"></body><ins id="gpt_unit_/15184186,21753127441/royaleapi_interstitial_0" data-google-query-id="CL3xgsOl2pcDFayjbAkdB0wUnw" aria-hidden="true" data-vignette-loaded="true" style="display: none !important; width: 100vw !important; height: 100vh !important; inset: 0px auto auto 0px !important; clear: none !important; float: none !important; margin: 0px !important; max-height: none !important; max-width: none !important; opacity: 1 !important; overflow: visible !important; padding: 0px !important; position: fixed !important; vertical-align: baseline !important; visibility: visible !important; z-index: 2147483647 !important; background: transparent !important;"><div id="google_ads_iframe_/15184186,21753127441/royaleapi_interstitial_0__container__" style="border: 0pt !important; width: 100vw !important; height: 100vh !important; inset: auto !important; clear: none !important; display: inline !important; float: none !important; margin: 0px !important; max-height: none !important; max-width: none !important; opacity: 1 !important; overflow: visible !important; padding: 0px !important; position: static !important; vertical-align: baseline !important; visibility: visible !important; z-index: auto !important;"></div></ins></html>
