@@ -75,6 +75,10 @@ import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.ui.Royal
 import kotlin.math.roundToInt
 
+/** Minimal deck card: 4 icons of ~46 dp, 3 dp gaps and edge. */
+val MINI_DECK_GAP = 3.dp
+val MINI_DECK_WIDTH = 46.dp * 4 + MINI_DECK_GAP * 5
+
 sealed interface PanelState {
     data object Hidden : PanelState
 
@@ -134,6 +138,24 @@ fun Panel(
     alpha: Float = 0.95f,
     deckOnly: Boolean = false,
 ) {
+    val battle = (state as? PanelState.Result)?.result?.lastBattle
+    if (deckOnly && !pinned && battle != null) {
+        // Minimal transient deck card: just the 8 icons. Tap to pin for the full layout.
+        val mini = RoundedCornerShape(8.dp)
+        Box(
+            Modifier
+                .width(MINI_DECK_WIDTH)
+                .graphicsLayer { this.alpha = alpha }
+                .clip(mini)
+                .background(Royal.Night.copy(alpha = 0.55f))
+                .border(1.dp, Royal.Gold.copy(alpha = 0.3f), mini)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
+                .padding(MINI_DECK_GAP)
+        ) {
+            DeckGrid(battle, showLevels = false, gap = MINI_DECK_GAP)
+        }
+        return
+    }
     val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 10.dp, bottomEnd = 10.dp)
     Column(
         Modifier
@@ -239,10 +261,10 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOn
 
 /** Two rows of four card images with their levels. */
 @Composable
-fun DeckGrid(battle: LastBattle) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+fun DeckGrid(battle: LastBattle, showLevels: Boolean = true, gap: androidx.compose.ui.unit.Dp = 4.dp) {
+    Column(verticalArrangement = Arrangement.spacedBy(gap)) {
         battle.cards.chunked(4).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 row.forEach { card ->
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         AsyncImage(
@@ -255,7 +277,7 @@ fun DeckGrid(battle: LastBattle) {
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Royal.Night.copy(alpha = 0.5f)),
                         )
-                        card.level?.let {
+                        if (showLevels) card.level?.let {
                             Text("Lv $it", style = MaterialTheme.typography.labelSmall, color = Royal.Parchment, maxLines = 1)
                         }
                     }

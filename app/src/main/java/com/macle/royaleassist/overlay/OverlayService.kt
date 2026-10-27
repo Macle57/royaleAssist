@@ -302,6 +302,8 @@ class OverlayService : Service() {
             positionPanel(params)
             wm.addView(view, params)
             panelRoot = view
+        } else {
+            positionPanel()
         }
         if (!pin) {
             val full = prefs.value.autoHideSeconds * 1000L
@@ -317,6 +319,7 @@ class OverlayService : Service() {
         if (pinned.value) return
         hideJob?.cancel()
         pinned.value = true
+        positionPanel()
         L.i("service: panel pinned")
     }
 
@@ -324,7 +327,7 @@ class OverlayService : Service() {
         val p = params ?: return
         val dm = resources.displayMetrics
         val bubble = scaledDp(56)
-        val panelW = scaledDp(264)
+        val panelW = if (isMiniDeck()) scaledDp(MINI_DECK_WIDTH.value.roundToInt()) else scaledDp(264)
         val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
         val besideX = if (onLeft) bubbleParams.x + bubble + gap else bubbleParams.x - panelW - gap
@@ -341,6 +344,10 @@ class OverlayService : Service() {
         }
         panelRoot?.let { if (it.isAttachedToWindow) wm.updateViewLayout(it, p) }
     }
+
+    /** True while the panel shows only the 8 deck icons (narrower window). */
+    private fun isMiniDeck() = prefs.value.deckOnly && !pinned.value &&
+        (panel.value as? PanelState.Result)?.result?.lastBattle != null
 
     private fun removePanel() {
         hideJob?.cancel()
