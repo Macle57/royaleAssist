@@ -33,6 +33,7 @@ import com.macle.royaleassist.lookup.VerifyActivity
 import com.macle.royaleassist.ocr.Box
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
+import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.ui.RoyalTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -84,6 +85,8 @@ class OverlayService : Service() {
     private val panel = MutableStateFlow<PanelState>(PanelState.Hidden)
     private val pinned = MutableStateFlow(false)
     private val busy = MutableStateFlow(false)
+    /** Live overlay settings (opacity, size, auto-hide, deck view); DataStore changes apply at once. */
+    private val prefs = MutableStateFlow(OverlayPrefs())
     private var job: Job? = null
     private var hideJob: Job? = null
     private var previewJob: Job? = null
@@ -103,6 +106,14 @@ class OverlayService : Service() {
         }
         createChannel()
         goForeground(withProjection = false)
+        scope.launch {
+            app.settings.overlayPrefs.collect { p ->
+                val old = prefs.value
+                prefs.value = p
+                if (old.scale != p.scale) { clampBubble(); positionPanel() }
+                if (p.alwaysPin && panelRoot != null) pinPanel()
+            }
+        }
         addBubble()
         _status.value = Status(running = true, capturing = false)
         scope.launch {
@@ -240,7 +251,8 @@ class OverlayService : Service() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 val isBusy by busy.collectAsState()
-                RoyalTheme { Bubble(isBusy) }
+                val p by prefs.collectAsState()
+                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, p.bubbleAlpha) } }
             }
         })
         owner.attach(root)
@@ -249,16 +261,20 @@ class OverlayService : Service() {
         bubbleRoot = root
     }
 
+    private fun scaledDp(v: Int) = (v * resources.displayMetrics.density * prefs.value.scale).roundToInt()
+
     private fun clampBubble() {
+        if (bubbleRoot == null) return
         val dm = resources.displayMetrics
-        val size = dp(56)
+        val size = scaledDp(56)
         bubbleParams.x = bubbleParams.x.coerceIn(0, dm.widthPixels - size)
         bubbleParams.y = bubbleParams.y.coerceIn(0, dm.heightPixels - size)
         bubbleRoot?.let { wm.updateViewLayout(it, bubbleParams) }
     }
 
-    private fun showPanel(state: PanelState, pin: Boolean = false) {
+    private fun showPanel(state: PanelState, pinRequested: Boolean = false) {
         hideJob?.cancel()
+        val pin = pinRequested || (prefs.value.alwaysPin && state !is PanelState.Hidden)
         panel.value = state
         if (state is PanelState.Hidden) { removePanel(); return }
         pinned.value = pin
@@ -268,6 +284,8 @@ class OverlayService : Service() {
             val view = composeView {
                 val s by panel.collectAsState()
                 val isPinned by pinned.collectAsState()
+                val p by prefs.collectAsState()
+                Scaled(p.scale) {
                 Panel(
                     state = s,
                     pinned = isPinned,
@@ -276,14 +294,18 @@ class OverlayService : Service() {
                     onRetry = { onBubbleTap() },
                     onPickLine = { line -> pickLine(line, panel.value.linesOrEmpty) },
                     onVerify = { openVerifier() },
+                    alpha = p.panelAlpha,
+                    deckOnly = p.deckOnly,
                 )
+                }
             }
             positionPanel(params)
             wm.addView(view, params)
             panelRoot = view
         }
         if (!pin) {
-            val ms = if (state is PanelState.NotFound) NOT_FOUND_HIDE_MS else AUTO_HIDE_MS
+            val full = prefs.value.autoHideSeconds * 1000L
+            val ms = if (state is PanelState.NotFound) minOf(NOT_FOUND_HIDE_MS, full) else full
             hideJob = scope.launch {
                 delay(ms)
                 if (!pinned.value) showPanel(PanelState.Hidden)
@@ -301,12 +323,22 @@ class OverlayService : Service() {
     private fun positionPanel(params: WindowManager.LayoutParams? = panelParams) {
         val p = params ?: return
         val dm = resources.displayMetrics
-        val bubble = dp(56)
-        val panelW = dp(264)
+        val bubble = scaledDp(56)
+        val panelW = scaledDp(264)
+        val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
-        p.x = if (onLeft) bubbleParams.x + bubble + dp(6) else bubbleParams.x - panelW - dp(6)
-        p.x = p.x.coerceIn(0, (dm.widthPixels - panelW).coerceAtLeast(0))
-        p.y = bubbleParams.y.coerceIn(0, (dm.heightPixels - dp(480)).coerceAtLeast(0))
+        val besideX = if (onLeft) bubbleParams.x + bubble + gap else bubbleParams.x - panelW - gap
+        val fitsBeside = besideX >= 0 && besideX + panelW <= dm.widthPixels
+        if (fitsBeside) {
+            p.x = besideX
+            p.y = bubbleParams.y.coerceIn(0, (dm.heightPixels - scaledDp(480)).coerceAtLeast(0))
+        } else {
+            // Large sizes: no room next to the bubble, so drop the panel below it (or above near the bottom).
+            p.x = (bubbleParams.x + bubble / 2 - panelW / 2).coerceIn(0, (dm.widthPixels - panelW).coerceAtLeast(0))
+            val below = bubbleParams.y + bubble + gap
+            p.y = if (below + scaledDp(300) <= dm.heightPixels) below
+            else (bubbleParams.y - scaledDp(300) - gap).coerceAtLeast(0)
+        }
         panelRoot?.let { if (it.isAttachedToWindow) wm.updateViewLayout(it, p) }
     }
 
@@ -398,7 +430,7 @@ class OverlayService : Service() {
     }
 
     private fun bubbleBox(): Box {
-        val s = dp(56)
+        val s = scaledDp(56)
         return Box(bubbleParams.x, bubbleParams.y, bubbleParams.x + s, bubbleParams.y + s)
     }
 
@@ -447,7 +479,7 @@ class OverlayService : Service() {
             val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(bmp, region, exclude, fallback) }
             val name = ocr.pick.name
             if (name == null) {
-                showPanel(PanelState.NotFound("No name in the scan region. Long-press the bubble to adjust it.", ocr.lines), pin = keepPinned)
+                showPanel(PanelState.NotFound("No name in the scan region. Long-press the bubble to adjust it.", ocr.lines), pinRequested = keepPinned)
                 return
             }
             val result = app.analyzer.lookupPick(ocr.pick)
@@ -456,7 +488,7 @@ class OverlayService : Service() {
             showPanel(
                 if (found) PanelState.Result(ocr.lines, ocr.pick, result)
                 else PanelState.NotFound(result?.error ?: "Player not found", ocr.lines, ocr.pick),
-                pin = keepPinned,
+                pinRequested = keepPinned,
             )
         } catch (e: CancellationException) {
             throw e
@@ -480,7 +512,7 @@ class OverlayService : Service() {
                 showPanel(
                     if (result?.stats != null) PanelState.Result(lines, pick, result)
                     else PanelState.NotFound(result?.error ?: "Player not found", lines, pick),
-                    pin = true,
+                    pinRequested = true,
                 )
             } finally {
                 busy.value = false

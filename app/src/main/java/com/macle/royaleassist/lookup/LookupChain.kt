@@ -4,6 +4,9 @@ import com.macle.royaleassist.L
 import com.macle.royaleassist.lookup.OfficialApi.Companion.toStats
 import com.macle.royaleassist.settings.Settings
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 
 /**
  * Turns an OCR'd player name (+ optional clan name) into a player tag and basic stats by trying a
@@ -32,7 +35,7 @@ class LookupChain(
 
     data class Scored(val hit: PlayerHit, val nameSim: Double, val clanSim: Double, val score: Double)
 
-    private class Ctx(val name: String, val clan: String?, val token: String?) {
+    private class Ctx(val name: String, val clan: String?, val token: String?, val wantDeck: Boolean = false) {
         val log = mutableListOf<String>()
         var cloudflareBlocked = false
         val candidates = LinkedHashMap<String, Scored>()
@@ -105,7 +108,7 @@ class LookupChain(
     suspend fun lookup(name: String, clan: String?): LookupResult {
         val cleanName = cleanOcrName(name)
         val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }
-        val ctx = Ctx(cleanName, cleanClan, settings.currentToken())
+        val ctx = Ctx(cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly)
         ctx.log("query name='$cleanName' clan='${cleanClan ?: "-"}' token=${if (ctx.token != null) "yes" else "no"}")
         if (cleanName.isBlank()) return LookupResult(name, clan, null, null, 0.0, null, log = ctx.log, error = "Empty name")
 
@@ -160,7 +163,12 @@ class LookupChain(
 
     private suspend fun finish(ctx: Ctx, found: Scored, strategy: String, alternatives: List<PlayerHit>, strong: Boolean): LookupResult {
         ctx.log("$strategy: picked ${describe(found)}")
-        val stats = fetchStats(ctx, found.hit)
+        // Stats and (when the deck view is on) the last battle are fetched in parallel.
+        val (stats, battle) = coroutineScope {
+            val s = async { fetchStats(ctx, found.hit) }
+            val b = async { if (ctx.wantDeck) fetchLastBattle(ctx, found.hit.tag) else null }
+            s.await() to b.await()
+        }
         return LookupResult(
             query = ctx.name,
             clanQuery = ctx.clan,
@@ -171,8 +179,45 @@ class LookupChain(
             alternatives = alternatives,
             needsVerification = ctx.cloudflareBlocked,
             strongMatch = strong,
+            lastBattle = battle?.getOrNull(),
+            lastBattleError = battle?.exceptionOrNull()?.message,
             log = ctx.log,
         )
+    }
+
+    /** Last battle deck: official battle log with a token, else the RoyaleAPI battles page. */
+    private suspend fun fetchLastBattle(ctx: Ctx, tag: String): Result<LastBattle> {
+        ctx.token?.let { token ->
+            try {
+                BattleLog.fromApi(api.battleLog(tag, token), tag)?.let {
+                    ctx.log("battle: official API ok (${it.mode})")
+                    return Result.success(it)
+                }
+                ctx.log("battle: official API battle log empty")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ctx.log("battle: official API failed: ${e.message}")
+            }
+        }
+        return try {
+            val b = BattleLog.parseRoyaleApi(http.getHtml(RoyaleApiWeb.battlesUrl(tag)), tag)
+            if (b != null) {
+                ctx.log("battle: royaleapi.com battles ok (${b.mode}, ${b.cards.size} cards)")
+                Result.success(b)
+            } else {
+                ctx.log("battle: no battles on royaleapi.com")
+                Result.failure(IllegalStateException("No recent battles found"))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: CloudflareBlockedException) {
+            ctx.log("battle: blocked by Cloudflare")
+            Result.failure(IllegalStateException("RoyaleAPI needs verification"))
+        } catch (e: Exception) {
+            ctx.log("battle: failed: ${e.message}")
+            Result.failure(e)
+        }
     }
 
     private suspend fun fetchStats(ctx: Ctx, hit: PlayerHit): PlayerStats {

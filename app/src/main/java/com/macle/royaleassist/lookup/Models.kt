@@ -44,8 +44,23 @@ data class LookupResult(
     val needsVerification: Boolean = false,
     /** False when the pick is only the best weak candidate (name or clan did not fully match). */
     val strongMatch: Boolean = false,
+    /** The player's deck in their most recent battle (only fetched when the deck view is on). */
+    val lastBattle: LastBattle? = null,
+    /** Why [lastBattle] is missing although it was requested. */
+    val lastBattleError: String? = null,
     val log: List<String> = emptyList(),
     val error: String? = null,
+)
+
+data class DeckCard(val name: String, val level: Int?, val iconUrl: String?)
+
+data class LastBattle(
+    /** "Ladder", "Path of Legends", "CRL 20-Win Challenge", ... */
+    val mode: String,
+    /** Epoch seconds, if known. */
+    val time: Long?,
+    val cards: List<DeckCard>,
+    val source: String,
 )
 
 // ---- Official Clash Royale API DTOs (only the fields we use) ----
@@ -86,7 +101,31 @@ data class ApiPlayerClan(val tag: String, val name: String)
 data class ApiArena(val name: String? = null)
 
 @Serializable
-data class ApiCard(val name: String, val level: Int? = null)
+data class ApiCard(
+    val name: String,
+    val level: Int? = null,
+    val maxLevel: Int? = null,
+    val evolutionLevel: Int? = null,
+    val iconUrls: ApiIconUrls? = null,
+)
+
+@Serializable
+data class ApiIconUrls(val medium: String? = null, val evolutionMedium: String? = null)
+
+@Serializable
+data class ApiBattle(
+    val type: String? = null,
+    val battleTime: String? = null,
+    val gameMode: ApiGameMode? = null,
+    val team: List<ApiBattlePlayer> = emptyList(),
+    val opponent: List<ApiBattlePlayer> = emptyList(),
+)
+
+@Serializable
+data class ApiGameMode(val name: String? = null)
+
+@Serializable
+data class ApiBattlePlayer(val tag: String, val name: String? = null, val cards: List<ApiCard> = emptyList())
 
 @Serializable
 data class ApiError(val reason: String? = null, val message: String? = null)

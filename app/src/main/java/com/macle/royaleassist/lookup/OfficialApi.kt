@@ -20,6 +20,9 @@ class OfficialApi(private val http: HttpClients) {
             http.getApiJson("$BASE/clans/%23${tagNoHash(clanTag)}/members", token)
         ).items
 
+    suspend fun battleLog(tag: String, token: String): List<ApiBattle> =
+        json.decodeFromString<List<ApiBattle>>(http.getApiJson("$BASE/players/%23${tagNoHash(tag)}/battlelog", token))
+
     suspend fun player(tag: String, token: String): ApiPlayer =
         json.decodeFromString<ApiPlayer>(http.getApiJson("$BASE/players/%23${tagNoHash(tag)}", token))
 

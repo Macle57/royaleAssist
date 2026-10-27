@@ -59,7 +59,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.macle.royaleassist.R
+import com.macle.royaleassist.lookup.BattleLog
+import com.macle.royaleassist.lookup.LastBattle
 import com.macle.royaleassist.lookup.LookupResult
+import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Density
 import com.macle.royaleassist.lookup.PlayerStats
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.OcrLine
@@ -84,13 +92,21 @@ sealed interface PanelState {
         }
 }
 
+/** Scales dp and sp of [content] by [scale] (overlay size setting). */
 @Composable
-fun Bubble(busy: Boolean) {
+fun Scaled(scale: Float, content: @Composable () -> Unit) {
+    val d = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(d.density * scale, d.fontScale), content = content)
+}
+
+@Composable
+fun Bubble(busy: Boolean, alpha: Float = 0.7f) {
     Box(
         modifier = Modifier
             .size(56.dp)
+            .graphicsLayer { this.alpha = alpha }
             .clip(CircleShape)
-            .background(Royal.Navy.copy(alpha = 0.72f))
+            .background(Royal.Navy)
             .border(2.dp, Royal.Gold.copy(alpha = 0.85f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
@@ -115,13 +131,16 @@ fun Panel(
     onRetry: () -> Unit,
     onPickLine: (OcrLine) -> Unit,
     onVerify: () -> Unit,
+    alpha: Float = 0.95f,
+    deckOnly: Boolean = false,
 ) {
     val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 10.dp, bottomEnd = 10.dp)
     Column(
         Modifier
             .width(264.dp)
+            .graphicsLayer { this.alpha = alpha }
             .clip(shape)
-            .background(Royal.Navy.copy(alpha = 0.95f))
+            .background(Royal.Navy)
             .border(1.dp, Royal.Gold.copy(alpha = if (pinned) 0.8f else 0.35f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
     ) {
@@ -149,7 +168,7 @@ fun Panel(
                     state.pick?.name?.let { NameHeader(it.text, state.pick.clan?.text, null) }
                     Text(state.message, color = Royal.Danger, style = MaterialTheme.typography.bodyMedium)
                 }
-                is PanelState.Result -> ResultContent(state, onVerify)
+                is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned)
             }
             if (pinned) PinnedExtras(state, onRetry, onPickLine, onVerify)
         }
@@ -164,7 +183,7 @@ private fun NameHeader(name: String, clan: String?, tag: String?) {
 }
 
 @Composable
-private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit) {
+private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOnly: Boolean, pinned: Boolean) {
     val r = state.result
     val s = r?.stats
     if (r == null || s == null) {
@@ -180,15 +199,71 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit) {
         }
         return
     }
+    val battle = r.lastBattle
+    if (deckOnly && battle != null) {
+        // Deck view: name/tag line, the 8 cards, and when/where the battle was.
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(s.name, style = MaterialTheme.typography.titleMedium, color = Royal.Elixir, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.width(6.dp))
+            Text("#${s.tag}", style = MaterialTheme.typography.labelSmall, color = Royal.Gold)
+        }
+        Spacer(Modifier.height(6.dp))
+        DeckGrid(battle)
+        Text(
+            listOfNotNull(battle.mode, BattleLog.relative(battle.time)).joinToString(", "),
+            style = MaterialTheme.typography.labelSmall,
+            color = Royal.Mist,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        if (!pinned) return
+        Spacer(Modifier.height(10.dp))
+    }
     NameHeader(s.name, s.clanName, s.tag)
     Spacer(Modifier.height(8.dp))
     StatRow(s)
+    if (deckOnly && battle == null) {
+        Text(
+            "Last-battle deck unavailable" + (r.lastBattleError?.let { ": $it" } ?: "") + ". Showing stats.",
+            style = MaterialTheme.typography.labelSmall,
+            color = Royal.Gold,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
     Spacer(Modifier.height(6.dp))
     Text(
         matchNote(r),
         style = MaterialTheme.typography.labelSmall,
         color = if (r.strongMatch) Royal.Mist else Royal.Gold,
     )
+}
+
+/** Two rows of four card images with their levels. */
+@Composable
+fun DeckGrid(battle: LastBattle) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        battle.cards.chunked(4).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { card ->
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        AsyncImage(
+                            model = card.iconUrl,
+                            contentDescription = card.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(5f / 6f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Royal.Night.copy(alpha = 0.5f)),
+                        )
+                        card.level?.let {
+                            Text("Lv $it", style = MaterialTheme.typography.labelSmall, color = Royal.Parchment, maxLines = 1)
+                        }
+                    }
+                }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
 }
 
 private fun matchNote(r: LookupResult): String {

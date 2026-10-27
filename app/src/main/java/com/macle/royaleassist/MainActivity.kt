@@ -34,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -61,6 +63,10 @@ import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.OfficialApi
 import com.macle.royaleassist.lookup.VerifyActivity
 import com.macle.royaleassist.overlay.OverlayService
+import com.macle.royaleassist.overlay.DeckGrid
+import com.macle.royaleassist.lookup.BattleLog
+import com.macle.royaleassist.settings.OverlayPrefs
+import kotlin.math.roundToInt
 import com.macle.royaleassist.ui.Royal
 import com.macle.royaleassist.ui.RoyalTheme
 import kotlinx.coroutines.launch
@@ -102,138 +108,257 @@ private fun SetupScreen(app: RoyaleAssistApp) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { canOverlay = Settings.canDrawOverlays(context) }
     }
 
+    val overlay by app.settings.overlayPrefs.collectAsState(initial = OverlayPrefs())
+    fun setOverlay(change: (OverlayPrefs) -> OverlayPrefs) { scope.launch { app.settings.updateOverlayPrefs(change) } }
+
     Column(
         Modifier
             .fillMaxSize()
             .background(Royal.Night)
             .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .padding(horizontal = 16.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("royaleAssist", style = MaterialTheme.typography.headlineSmall, color = Royal.Gold)
-        Text(
-            "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Royal.Mist,
-            modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
-        )
-
-        Step(
-            done = canOverlay,
-            title = "Show the bubble over other apps",
-            body = "Android asks you to switch on \"Display over other apps\" for royaleAssist.",
-            action = if (canOverlay) null else "Open setting" to {
-                context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-            },
-        )
-        Step(
-            done = status.capturing,
-            title = "Allow screen capture",
-            body = "Needed to read names off the game screen. Android may ask again after a restart or when the phone locks; the bubble then asks for you.",
-            action = (if (status.capturing) "Ask again" else "Allow") to {
-                if (!status.running && canOverlay) OverlayService.start(context)
-                context.startActivity(ConsentActivity.intent(context))
-            },
-        )
-        Step(
-            done = status.running,
-            title = if (status.running) "Bubble is on" else "Start the bubble",
-            body = "The bubble stays on top of the game until you stop it here or from the notification.",
-            action = if (status.running) "Stop bubble" to { OverlayService.stop(context) }
-            else "Start bubble" to { if (canOverlay) OverlayService.start(context) },
-        )
-
-        Section("Scan region")
-        Text(
-            "Only this part of the screen is read, which is much faster than the whole screen. " +
-                "Open a battle, long-press the bubble (or tap Set scan region and switch to the game), " +
-                "then drag the box over the opponent's name and clan.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Royal.Mist,
-        )
-        Text(
-            "Now: x %d–%d%%, y %d–%d%% of the screen".format(
-                (region.left * 100).toInt(), (region.right * 100).toInt(), (region.top * 100).toInt(), (region.bottom * 100).toInt(),
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            Pill("Set scan region", primary = true) {
-                if (canOverlay) OverlayService.send(context, OverlayService.ACTION_EDIT_REGION)
-            }
-            Pill("Show scan region", primary = false) {
-                if (canOverlay) OverlayService.send(context, OverlayService.ACTION_SHOW_REGION)
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("Full-screen fallback", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "If the region has no name, read the whole screen too. Slower.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Royal.Mist,
-                )
-            }
-            Switch(
-                checked = fullFallback,
-                onCheckedChange = { on -> scope.launch { app.settings.setFullScreenFallback(on) } },
-                colors = SwitchDefaults.colors(checkedTrackColor = Royal.Gold, checkedThumbColor = Royal.Night),
+        Column(Modifier.padding(horizontal = 4.dp)) {
+            Text("royaleAssist", style = MaterialTheme.typography.headlineSmall, color = Royal.Gold)
+            Text(
+                "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Royal.Mist,
             )
         }
 
-        Section("Clash Royale API token (optional)")
-        Text(
-            "With a token the panel shows wins, losses and the current deck, and players can be found through their clan. " +
-                "Create a key at developer.clashroyale.com with the IP ${OfficialApi.PROXY_IP} (the RoyaleAPI proxy).",
-            style = MaterialTheme.typography.bodySmall,
-            color = Royal.Mist,
-        )
-        Spacer(Modifier.height(8.dp))
-        RoyalField(
-            value = tokenField,
-            onChange = { tokenField = it; tokenSaved = false },
-            label = if (savedToken != null) "Token saved, paste to replace" else "Paste token",
-            secret = true,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            Pill("Save token", primary = true) {
-                scope.launch { app.settings.setApiToken(tokenField); tokenField = ""; tokenSaved = true }
-            }
-            if (savedToken != null) Pill("Remove token", primary = false) {
-                scope.launch { app.settings.setApiToken(null); tokenSaved = false }
-            }
+        SectionCard("Permissions") {
+            Step(
+                done = canOverlay,
+                title = "Show the bubble over other apps",
+                body = "Android asks you to switch on \"Display over other apps\" for royaleAssist.",
+                action = if (canOverlay) null else "Open setting" to {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                },
+            )
+            Step(
+                done = status.capturing,
+                title = "Allow screen capture",
+                body = "Needed to read names off the game screen. Android may ask again after a restart or when the phone locks; the bubble then asks for you.",
+                action = (if (status.capturing) "Ask again" else "Allow") to {
+                    if (!status.running && canOverlay) OverlayService.start(context)
+                    context.startActivity(ConsentActivity.intent(context))
+                },
+            )
+            Step(
+                done = status.running,
+                title = if (status.running) "Bubble is on" else "Start the bubble",
+                body = "The bubble stays on top of the game until you stop it here or from the notification.",
+                action = if (status.running) "Stop bubble" to { OverlayService.stop(context) }
+                else "Start bubble" to { if (canOverlay) OverlayService.start(context) },
+                last = true,
+            )
         }
-        if (tokenSaved) Text("Token saved.", color = Royal.Gold, style = MaterialTheme.typography.bodySmall)
 
-        Section("Test a lookup")
-        Text(
-            "Type a player name (or a #tag) to check the lookup without the game.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Royal.Mist,
-        )
-        Spacer(Modifier.height(8.dp))
-        RoyalField(value = query, onChange = { query = it }, label = "Player name or #tag")
-        Spacer(Modifier.height(6.dp))
-        RoyalField(value = clanQuery, onChange = { clanQuery = it }, label = "Clan name (optional)")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            Pill(if (lookupBusy) "Looking up..." else "Look up", primary = true) {
-                if (!lookupBusy) scope.launch {
-                    lookupBusy = true
-                    lookupResult = app.lookup.lookup(query, clanQuery.ifBlank { null })
-                    lookupBusy = false
+        SectionCard("Overlay") {
+            SliderRow(
+                label = "Bubble opacity",
+                value = overlay.bubbleAlpha,
+                valueText = "${(overlay.bubbleAlpha * 100).roundToInt()}%",
+                range = OverlayPrefs.MIN_ALPHA..1f,
+                steps = 13,
+            ) { v -> setOverlay { it.copy(bubbleAlpha = v) } }
+            SliderRow(
+                label = "Panel opacity",
+                value = overlay.panelAlpha,
+                valueText = "${(overlay.panelAlpha * 100).roundToInt()}%",
+                range = OverlayPrefs.MIN_ALPHA..1f,
+                steps = 13,
+            ) { v -> setOverlay { it.copy(panelAlpha = v) } }
+            SliderRow(
+                label = "Size",
+                value = overlay.scale,
+                valueText = sizeLabel(overlay.scale),
+                range = 0.75f..1.5f,
+                steps = 14,
+            ) { v -> setOverlay { it.copy(scale = v) } }
+            SliderRow(
+                label = "Hide results after",
+                value = overlay.autoHideSeconds.toFloat(),
+                valueText = if (overlay.alwaysPin) "never" else "${overlay.autoHideSeconds} s",
+                range = 2f..30f,
+                steps = 27,
+                enabled = !overlay.alwaysPin,
+            ) { v -> setOverlay { it.copy(autoHideSeconds = v.roundToInt()) } }
+            SwitchRow(
+                title = "Always pin",
+                body = "Results stay until you close them.",
+                checked = overlay.alwaysPin,
+            ) { on -> setOverlay { it.copy(alwaysPin = on) } }
+            SwitchRow(
+                title = "Show only the last-battle deck",
+                body = "The card shows the opponent's 8 cards from their most recent battle instead of stats. Pin it to see both.",
+                checked = overlay.deckOnly,
+            ) { on -> setOverlay { it.copy(deckOnly = on) } }
+        }
+
+        SectionCard("Scan region") {
+            Text(
+                "Only this part of the screen is read, which is much faster than the whole screen. " +
+                    "Open a battle, long-press the bubble (or tap Set scan region and switch to the game), " +
+                    "then drag the box over the opponent's name and clan.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Royal.Mist,
+            )
+            Text(
+                "Now: x %d–%d%%, y %d–%d%% of the screen".format(
+                    (region.left * 100).toInt(), (region.right * 100).toInt(), (region.top * 100).toInt(), (region.bottom * 100).toInt(),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Pill("Set scan region", primary = true) {
+                    if (canOverlay) OverlayService.send(context, OverlayService.ACTION_EDIT_REGION)
+                }
+                Pill("Show scan region", primary = false) {
+                    if (canOverlay) OverlayService.send(context, OverlayService.ACTION_SHOW_REGION)
                 }
             }
-            Pill("Verify RoyaleAPI", primary = false) { context.startActivity(VerifyActivity.intent(context, query)) }
+            SwitchRow(
+                title = "Full-screen fallback",
+                body = "If the region has no name, read the whole screen too. Slower.",
+                checked = fullFallback,
+            ) { on -> scope.launch { app.settings.setFullScreenFallback(on) } }
         }
-        lookupResult?.let { ResultCard(it) }
-        Spacer(Modifier.height(40.dp))
+
+        SectionCard("Lookup") {
+            Text(
+                "Clash Royale API token (optional). With a token the card shows wins, losses and the deck from the official API, " +
+                    "and players can be found through their clan. Create a key at developer.clashroyale.com with the IP " +
+                    "${OfficialApi.PROXY_IP} (the RoyaleAPI proxy).",
+                style = MaterialTheme.typography.bodySmall,
+                color = Royal.Mist,
+            )
+            Spacer(Modifier.height(8.dp))
+            RoyalField(
+                value = tokenField,
+                onChange = { tokenField = it; tokenSaved = false },
+                label = if (savedToken != null) "Token saved, paste to replace" else "Paste token",
+                secret = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Pill("Save token", primary = true) {
+                    scope.launch { app.settings.setApiToken(tokenField); tokenField = ""; tokenSaved = true }
+                }
+                if (savedToken != null) Pill("Remove token", primary = false) {
+                    scope.launch { app.settings.setApiToken(null); tokenSaved = false }
+                }
+            }
+            if (tokenSaved) Text("Token saved.", color = Royal.Gold, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Without a token, lookups use royaleapi.com, which asks for a one-time browser check.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Royal.Mist,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+            Row(Modifier.padding(top = 6.dp)) {
+                Pill("Verify RoyaleAPI", primary = false) { context.startActivity(VerifyActivity.intent(context, query)) }
+            }
+        }
+
+        SectionCard("Debug") {
+            Text(
+                "Type a player name (or a #tag) to check the lookup without the game. Uses the settings above, including the deck view.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Royal.Mist,
+            )
+            Spacer(Modifier.height(8.dp))
+            RoyalField(value = query, onChange = { query = it }, label = "Player name or #tag")
+            Spacer(Modifier.height(6.dp))
+            RoyalField(value = clanQuery, onChange = { clanQuery = it }, label = "Clan name (optional)")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Pill(if (lookupBusy) "Looking up..." else "Look up", primary = true) {
+                    if (!lookupBusy) scope.launch {
+                        lookupBusy = true
+                        lookupResult = app.lookup.lookup(query, clanQuery.ifBlank { null })
+                        lookupBusy = false
+                    }
+                }
+            }
+            lookupResult?.let { ResultCard(it) }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+private fun sizeLabel(scale: Float): String {
+    val name = when {
+        scale < 0.9f -> "Small"
+        scale <= 1.1f -> "Medium"
+        else -> "Large"
+    }
+    return "$name, %.2fx".format(scale)
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Royal.Navy)
+            .padding(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = Royal.Gold)
+        Spacer(Modifier.height(10.dp))
+        content()
     }
 }
 
 @Composable
-private fun Step(done: Boolean, title: String, body: String, action: Pair<String, () -> Unit>?) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+private fun SliderRow(
+    label: String,
+    value: Float,
+    valueText: String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    enabled: Boolean = true,
+    onChange: (Float) -> Unit,
+) {
+    // Local state keeps dragging smooth; the value is saved when the finger lifts.
+    var local by remember(value) { mutableStateOf(value) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(valueText, style = MaterialTheme.typography.bodyMedium, color = Royal.Gold)
+    }
+    Slider(
+        value = local,
+        onValueChange = { local = it },
+        onValueChangeFinished = { onChange(local) },
+        valueRange = range,
+        steps = steps,
+        enabled = enabled,
+        colors = SliderDefaults.colors(thumbColor = Royal.Gold, activeTrackColor = Royal.Gold, inactiveTrackColor = Royal.Slate),
+    )
+}
+
+@Composable
+private fun SwitchRow(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = Royal.Mist)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = Royal.Gold, checkedThumbColor = Royal.Night),
+        )
+    }
+}
+
+@Composable
+private fun Step(done: Boolean, title: String, body: String, action: Pair<String, () -> Unit>?, last: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(bottom = if (last) 0.dp else 16.dp)) {
         Box(
             Modifier
                 .size(22.dp)
@@ -254,14 +379,6 @@ private fun Step(done: Boolean, title: String, body: String, action: Pair<String
             }
         }
     }
-}
-
-@Composable
-private fun Section(title: String) {
-    Spacer(Modifier.height(12.dp))
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Royal.Slate))
-    Spacer(Modifier.height(14.dp))
-    Text(title, style = MaterialTheme.typography.titleMedium, color = Royal.Gold)
 }
 
 @Composable
@@ -313,6 +430,18 @@ private fun ResultCard(r: LookupResult) {
             Text(s.name, style = MaterialTheme.typography.headlineSmall, color = Royal.Elixir)
             Text("#${s.tag}", style = MaterialTheme.typography.titleMedium, color = Royal.Gold)
             s.clanName?.let { Text(it + (s.clanTag?.let { t -> "  #$t" } ?: ""), style = MaterialTheme.typography.bodyMedium) }
+            r.lastBattle?.let { b ->
+                Spacer(Modifier.height(8.dp))
+                Text("Last battle deck", style = MaterialTheme.typography.labelSmall, color = Royal.Mist)
+                Box(Modifier.width(260.dp)) { DeckGrid(b) }
+                Text(
+                    listOfNotNull(b.mode, BattleLog.relative(b.time)).joinToString(", ") + " (${b.source})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Royal.Mist,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+            r.lastBattleError?.let { Text("Last battle: $it", style = MaterialTheme.typography.labelSmall, color = Royal.Gold) }
             val facts = listOfNotNull(
                 s.trophies?.let { "Trophies $it" + (s.bestTrophies?.let { b -> " (best $b)" } ?: "") },
                 s.expLevel?.let { "Level $it" },

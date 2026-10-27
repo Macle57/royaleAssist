@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.jsoup)
+    implementation(libs.coil.compose)
 
     implementation(libs.mlkit.text.latin)
     implementation(libs.mlkit.text.chinese)
