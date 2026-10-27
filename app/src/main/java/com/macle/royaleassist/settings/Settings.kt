@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.cache.CacheTtl
+import com.macle.royaleassist.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -120,6 +121,15 @@ class Settings(private val context: Context) {
                 p[regionLeft] = n.left; p[regionTop] = n.top; p[regionRight] = n.right; p[regionBottom] = n.bottom
             }
         }
+    }
+
+    private val saveScansKey = booleanPreferencesKey("save_scans")
+
+    /** Save every bubble scan (frame, crop, JSON) for debugging; on by default in debug builds. */
+    val saveScans: Flow<Boolean> = context.dataStore.data.map { it[saveScansKey] ?: BuildConfig.DEBUG }
+
+    suspend fun setSaveScans(on: Boolean) {
+        context.dataStore.edit { it[saveScansKey] = on }
     }
 
     private val cacheTtlKey = stringPreferencesKey("cache_ttl")

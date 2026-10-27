@@ -44,8 +44,10 @@ object LineMerger {
             .filter { it.second >= 0.5 }
             .maxByOrNull { it.first.confidence + it.second.toFloat() * 0.2f }
             ?.first
+        // A specialised recognizer only beats a confident Latin reading when it is clearly more
+        // confident (stops Devanagari/Korean misreads of Latin game text from winning).
         return when {
-            special != null && (latin == null || special.confidence >= latin.confidence - 0.15f ||
+            special != null && (latin == null || latin.confidence < 0.5f || special.confidence >= latin.confidence + 0.1f ||
                 Scripts.fitFraction(latin.text, "latin") < 0.5) -> special
             latin != null -> latin
             else -> cluster.maxBy { it.confidence }

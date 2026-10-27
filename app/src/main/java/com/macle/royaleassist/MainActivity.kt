@@ -67,6 +67,7 @@ import com.macle.royaleassist.overlay.DeckGrid
 import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.cache.CacheTtl
+import com.macle.royaleassist.debug.ScanRecorder
 import kotlin.math.roundToInt
 import com.macle.royaleassist.ui.Royal
 import com.macle.royaleassist.ui.RoyalTheme
@@ -111,6 +112,13 @@ private fun SetupScreen(app: RoyaleAssistApp) {
 
     val overlay by app.settings.overlayPrefs.collectAsState(initial = OverlayPrefs())
     val cacheTtl by app.settings.cacheTtl.collectAsState(initial = CacheTtl.DEFAULT)
+    val saveScans by app.settings.saveScans.collectAsState(initial = BuildConfig.DEBUG)
+    var scanStats by remember { mutableStateOf(ScanRecorder.Stats(0, 0)) }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            scanStats = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.recorder.stats() }
+        }
+    }
     fun setOverlay(change: (OverlayPrefs) -> OverlayPrefs) { scope.launch { app.settings.updateOverlayPrefs(change) } }
 
     Column(
@@ -300,6 +308,32 @@ private fun SetupScreen(app: RoyaleAssistApp) {
                 }
             }
             lookupResult?.let { ResultCard(it) }
+
+            Text("Saved scans", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
+            SwitchRow(
+                title = "Save scans for debugging",
+                body = "Each bubble tap keeps the screenshot, the part that was read, what was recognised and the lookup steps (last ${ScanRecorder.KEEP}).",
+                checked = saveScans,
+            ) { on -> scope.launch { app.settings.setSaveScans(on) } }
+            Text(
+                "Scans saved: ${scanStats.count} (%.1f MB)".format(scanStats.bytes / 1_048_576.0),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                Pill("Export debug bundle", primary = true) {
+                    scope.launch {
+                        val share = app.recorder.exportBundle()
+                        context.startActivity(Intent.createChooser(share, "Share debug bundle"))
+                    }
+                }
+                Pill("Clear saved scans", primary = false) {
+                    scope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.recorder.clear() }
+                        scanStats = app.recorder.stats()
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(24.dp))
     }

@@ -33,6 +33,8 @@ data class OcrLine(
     val confidence: Float,
     val source: String,
     val language: String? = null,
+    /** Fraction of saturated pink/orange pixels in the box (see ColorStats); 0 when not measured. */
+    val warmth: Double = 0.0,
 )
 
 object Scripts {

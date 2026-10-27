@@ -136,7 +136,8 @@ class LookupChain(
      */
     suspend fun lookup(name: String, clan: String?, bypassCache: Boolean = false): LookupResult {
         val cleanName = cleanOcrName(name)
-        val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }
+        // A clan reading that is really a number (tower HP, level badge) is worse than no clan.
+        val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }?.takeIf { isPlausibleText(it) }
         val key = CachePolicy.queryKey(cleanName, cleanClan)
         val ctx = Ctx(
             cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
@@ -144,6 +145,10 @@ class LookupChain(
         )
         ctx.log("query name='$cleanName' clan='${cleanClan ?: "-"}' token=${if (ctx.token != null) "yes" else "no"}")
         if (cleanName.isBlank()) return LookupResult(name, clan, null, null, 0.0, null, log = ctx.log, error = "Empty name")
+        if (!TAG_RE.matches(cleanName) && !isPlausibleText(cleanName)) {
+            ctx.log("rejected query '$cleanName': not a name (numbers or too few letters), no search sent")
+            return LookupResult(name, clan, null, null, 0.0, null, log = ctx.log, error = "No name found")
+        }
 
         if (cache != null && !bypassCache) {
             val hit = cache.byQuery(key)
@@ -361,6 +366,13 @@ class LookupChain(
         const val MAX_CLAN_PAGES = 6
         private val TAG_RE = Regex("#[0289PYLQGRJCUV]{3,14}", RegexOption.IGNORE_CASE)
 
+        /** At least two letters and not mostly digits ("4858", "E4858", "的4858-" are rejected). */
+        fun isPlausibleText(s: String): Boolean {
+            val letters = s.count { it.isLetter() }
+            val digits = s.count { it.isDigit() }
+            return letters >= 2 && digits < letters
+        }
+
         /** Strip OCR noise around a name: surrounding quotes/stars/pipes and extra spaces. */
         fun cleanOcrName(s: String): String =
             s.replace(Regex("\\s+"), " ")
@@ -400,7 +412,7 @@ class LookupChain(
             // The clan badge left of the name is often read as an extra first letter ("CROYale King").
             val dropFirst = if (name.length >= 4 && !name[1].isWhitespace()) listOf(name.substring(1)) else emptyList()
             return (fixes.take(2) + dropFirst + fixes.drop(2))
-                .filter { it != name }
+                .filter { it != name && isPlausibleText(it) }
                 .distinct()
         }
 

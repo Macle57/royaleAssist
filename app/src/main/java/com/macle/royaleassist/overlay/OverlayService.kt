@@ -485,16 +485,25 @@ class OverlayService : Service() {
                 showPanel(PanelState.NotFound("Could not grab the screen. Tap the bubble to try again."))
                 return
             }
+            val tCapture = System.currentTimeMillis() - t0
             val region = app.settings.currentScanRegion()
             val fallback = app.settings.fullScreenFallback.first()
             val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(bmp, region, exclude, fallback) }
             val name = ocr.pick.name
+            val save = app.settings.saveScans.first()
             if (name == null) {
+                if (save) app.recorder.record(bmp, region, ocr, null, mapOf("capture" to tCapture, "ocr" to ocr.millis), "no name found")
                 showPanel(PanelState.NotFound("No name in the scan region. Long-press the bubble to adjust it.", ocr.lines), pinRequested = keepPinned)
                 return
             }
+            val tLookup0 = System.currentTimeMillis()
             val result = app.analyzer.lookupPick(ocr.pick)
-            L.i("service: scan done in ${System.currentTimeMillis() - t0} ms (ocr ${ocr.millis} ms, ${ocr.mode})")
+            val total = System.currentTimeMillis() - t0
+            L.i("service: scan done in $total ms (ocr ${ocr.millis} ms, ${ocr.mode}${if (ocr.expanded) ", region grown" else ""})")
+            if (save) {
+                val timings = mapOf("capture" to tCapture, "ocr" to ocr.millis, "lookup" to System.currentTimeMillis() - tLookup0, "total" to total)
+                app.appScope.launch { app.recorder.record(bmp, region, ocr, result, timings) }
+            }
             val found = result?.stats != null
             showPanel(
                 if (found) PanelState.Result(ocr.lines, ocr.pick, result)

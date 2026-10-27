@@ -65,7 +65,11 @@ class DebugActivity : Activity() {
             }
             val inputs = loadInputs()
             if (inputs.isEmpty()) emit("RESULT error=no-input (use --es asset, --es image or --ez all true)")
-            val region = app.settings.currentScanRegion()
+            // --es region x0,y0,x1,y1 (fractions) overrides the saved scan region.
+            val region = intent.getStringExtra("region")?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }
+                ?.takeIf { it.size == 4 }?.let { ScanRegion(it[0], it[1], it[2], it[3]).normalized() }
+                ?: app.settings.currentScanRegion()
+            emit("REGION $region")
             val fallback = app.settings.fullScreenFallback.first()
             for ((label, bmp) in inputs) {
                 when (mode) {
@@ -94,7 +98,7 @@ class DebugActivity : Activity() {
             BitmapFactory.decodeFile(path)?.let { list += File(path).name to it } ?: L.w("debug: cannot decode $path")
         }
         val assetNames = if (intent.getBooleanExtra("all", false)) {
-            assets.list("")?.filter { it.endsWith(".png") }?.sorted().orEmpty()
+            assets.list("")?.filter { it.endsWith(".png") || it.endsWith(".jpg") }?.sorted().orEmpty()
         } else listOfNotNull(intent.getStringExtra("asset"))
         for (a in assetNames) {
             runCatching { assets.open(a).use { BitmapFactory.decodeStream(it) } }.getOrNull()?.let { list += a to it }
@@ -135,10 +139,12 @@ class DebugActivity : Activity() {
     }
 
     private suspend fun emitOcr(label: String, o: OcrOutcome, r: LookupResult?) {
-        val lines = o.lines.joinToString(" | ") { "'${it.text}'(${it.source},h=${it.box.height},c=${"%.2f".format(it.confidence)})" }
+        val lines = o.lines.joinToString(" | ") {
+            "'${it.text}'(${it.source},h=${it.box.height},c=${"%.2f".format(it.confidence)},w=${"%.2f".format(it.warmth)},box=${it.box.left},${it.box.top},${it.box.right},${it.box.bottom})"
+        }
         emit(
             "RESULT sample=$label name='${o.pick.name?.text ?: ""}' clan='${o.pick.clan?.text ?: ""}' " +
-                "nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} mode=${o.mode} ocrMs=${o.millis}" +
+                "nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} mode=${o.mode} grown=${o.expanded} box=${o.scanned} ocrMs=${o.millis} why='${o.pick.reason}'" +
                 (r?.let { " " + describe(it) } ?: "")
         )
         emit("LINES sample=$label $lines")

@@ -4,8 +4,8 @@ package com.macle.royaleassist.ocr
  * The part of the screen that is OCR'd, as fractions of the screen width/height (0..1).
  *
  * In a Clash Royale battle the opponent's name and clan sit in the top-left corner. The default
- * frames that block on a 1080x2400 portrait screen: x 0..65 %, y 3..14 % (y 72..336 px), which
- * starts below a typical status bar / camera cutout. Users can move and resize it in the overlay
+ * frames that block on 1080x2340..2400 portrait screens: x 0..60 %, y 2.5..16 % (y 58..374 px on
+ * 2340), leaving room above the name so a slightly tall font or a cutout offset is not clipped. Users can move and resize it in the overlay
  * ("Set scan region").
  */
 data class ScanRegion(val left: Float, val top: Float, val right: Float, val bottom: Float) {
@@ -29,7 +29,7 @@ data class ScanRegion(val left: Float, val top: Float, val right: Float, val bot
 
     companion object {
         const val MIN_SIZE = 0.03f
-        val DEFAULT = ScanRegion(0f, 0.03f, 0.65f, 0.14f)
+        val DEFAULT = ScanRegion(0f, 0.025f, 0.60f, 0.16f)
 
         fun fromBox(b: Box, width: Int, height: Int) = ScanRegion(
             b.left.toFloat() / width, b.top.toFloat() / height,

@@ -2,6 +2,7 @@ package com.macle.royaleassist
 
 import android.app.Application
 import com.macle.royaleassist.cache.CacheDb
+import com.macle.royaleassist.debug.ScanRecorder
 import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.lookup.HttpClients
 import com.macle.royaleassist.lookup.LookupChain
@@ -25,10 +26,12 @@ class RoyaleAssistApp : Application() {
     val ocr by lazy { OcrEngine() }
     val tesseract by lazy { TesseractFallback(this) }
     val analyzer by lazy { Analyzer(ocr, tesseract, lookup) }
+    val recorder by lazy { ScanRecorder(this) }
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        L.init(recorder.logsDir)
     }
 
     companion object {
