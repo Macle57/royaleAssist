@@ -63,25 +63,42 @@ class VerifyActivity : Activity() {
         web.settings.domStorageEnabled = true
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
-                val title = view.title.orEmpty()
-                L.i("verify: loaded '$title' $url")
-                if (title.isNotEmpty() && !title.contains("Just a moment", ignoreCase = true) &&
-                    url.startsWith(RoyaleApiWeb.BASE)
-                ) {
-                    CookieManager.getInstance().flush()
-                    val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true
-                    L.i("verify: passed, cf_clearance=${ok}")
-                    _verified.value = _verified.value + 1
-                    status.text = "Verified. You can go back."
-                    view.postDelayed({ if (!isFinishing) finish() }, 800)
-                }
+                L.i("verify: loaded '${view.title}' $url")
+                checkPassed()
             }
         }
+        // The challenge often swaps the page in place without a new onPageFinished, so poll too.
+        web.postDelayed(poll, 1000)
         val q = intent.getStringExtra(EXTRA_QUERY) ?: "Macle"
         web.loadUrl(RoyaleApiWeb.searchUrl(q, exact = true))
     }
 
+    private var done = false
+
+    private val poll = object : Runnable {
+        override fun run() {
+            if (done || isFinishing) return
+            checkPassed()
+            web.postDelayed(this, 1000)
+        }
+    }
+
+    private fun checkPassed() {
+        if (done) return
+        val title = web.title.orEmpty()
+        val url = web.url.orEmpty()
+        if (title.isEmpty() || title.contains("Just a moment", ignoreCase = true) || !url.startsWith(RoyaleApiWeb.BASE)) return
+        done = true
+        CookieManager.getInstance().flush()
+        val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true
+        L.i("verify: passed ('$title'), cf_clearance=$ok")
+        _verified.value = _verified.value + 1
+        status.text = "Verified. Returning..."
+        web.postDelayed({ if (!isFinishing) finish() }, 800)
+    }
+
     override fun onDestroy() {
+        web.removeCallbacks(poll)
         web.destroy()
         super.onDestroy()
     }

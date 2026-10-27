@@ -48,6 +48,8 @@ class DebugActivity : Activity() {
         out = TextView(this).apply { setTextColor(Color.WHITE); textSize = 11f; setPadding(24, 80, 24, 24) }
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(out) })
 
+        // A recreated activity (e.g. configuration change) must not start the run a second time.
+        if (savedInstanceState != null) { out.text = "Run already started; see logcat."; return }
         val name = intent.getStringExtra("name")
         val clan = intent.getStringExtra("clan")
         app.appScope.launch {

@@ -43,15 +43,32 @@ class Analyzer(
         var pick = NamePicker.pick(lines, exclude)
         var tessUsed = false
         val name = pick.name
-        if (useTesseract && name != null && needsTesseract(name)) {
-            val (crop, _) = Preprocess.crop(src, name.box, 0.2f)
-            val best = tesseract.readLine(crop).firstOrNull()
-            if (best != null && acceptTesseract(best)) {
-                val tLine = OcrLine(best.text, name.box, best.confidence / 100f, "tesseract-${best.lang}")
-                lines = lines + tLine
-                pick = NamePick(tLine, pick.clan)
-                tessUsed = true
-                L.i("analyze: tesseract replaced name '${name.text}' -> '${best.text}'")
+        if (useTesseract && name != null) {
+            if (pick.clan == null && lines.none { it !== name && it.box.bottom <= name.box.top && it.box.bottom > name.box.top - 3 * name.box.height }) {
+                // Lone line with nothing above it: maybe it is really the clan, and the name above is
+                // in a script ML Kit cannot read (Arabic, Cyrillic). Read the strip above with Tesseract.
+                val above = regionAbove(name.box, src.width)
+                if (above != null) {
+                    val best = tesseract.readLine(Bitmap.createBitmap(src, above.left, above.top, above.width, above.height))
+                        .firstOrNull()
+                    if (best != null && acceptTesseract(best, mlKitConfidence = 0f)) {
+                        val tLine = OcrLine(best.text, above, best.confidence / 100f, "tesseract-${best.lang}")
+                        lines = (lines + tLine).sortedBy { it.box.top }
+                        pick = NamePick(tLine, name)
+                        tessUsed = true
+                        L.i("analyze: tesseract found name '${best.text}' above '${name.text}'")
+                    }
+                }
+            } else if (needsTesseract(name)) {
+                val (crop, _) = Preprocess.crop(src, name.box, 0.2f)
+                val best = tesseract.readLine(crop).firstOrNull()
+                if (best != null && acceptTesseract(best, name.confidence)) {
+                    val tLine = OcrLine(best.text, name.box, best.confidence / 100f, "tesseract-${best.lang}")
+                    lines = lines + tLine
+                    pick = NamePick(tLine, pick.clan)
+                    tessUsed = true
+                    L.i("analyze: tesseract replaced name '${name.text}' -> '${best.text}'")
+                }
             }
         }
         val ms = System.currentTimeMillis() - t0
@@ -73,15 +90,35 @@ class Analyzer(
         fun needsTesseract(name: OcrLine): Boolean {
             val letters = Scripts.letterCount(name.text)
             val fit = Scripts.fitFraction(name.text, name.source)
-            val dominant = Scripts.dominant(name.text)
-            return name.confidence < 0.6f || letters < 2 || fit < 0.6 ||
-                dominant == UnicodeScript.CYRILLIC || dominant == UnicodeScript.ARABIC
+            return name.confidence < 0.5f || letters < 2 || fit < 0.5
         }
 
-        fun acceptTesseract(r: TesseractFallback.Result): Boolean {
+        /**
+         * Tesseract's rus model happily reads Latin game text as Cyrillic look-alikes with high
+         * confidence ("TOT" -> "тет" at 89), so a Tesseract reading only wins when it is in a
+         * script ML Kit lacks AND ML Kit's own reading was weak.
+         */
+        fun acceptTesseract(r: TesseractFallback.Result, mlKitConfidence: Float): Boolean {
             val dominant = Scripts.dominant(r.text)
-            return r.confidence >= 55 && Scripts.letterCount(r.text) >= 2 &&
-                (dominant == UnicodeScript.ARABIC || dominant == UnicodeScript.CYRILLIC)
+            val fit = Scripts.fitFraction(r.text, "tesseract-${r.lang}")
+            if (Scripts.letterCount(r.text) < 2 || fit < 0.7) return false
+            return when (dominant) {
+                UnicodeScript.ARABIC -> r.confidence >= 55
+                UnicodeScript.CYRILLIC -> r.confidence >= 60 && mlKitConfidence < 0.5f
+                else -> false
+            }
+        }
+
+        /** The strip directly above a text line, where the name sits when [line] is the clan. */
+        fun regionAbove(line: Box, imageWidth: Int): Box? {
+            val h = line.height
+            val top = (line.top - (h * 2.4f).toInt()).coerceAtLeast(0)
+            val bottom = line.top - (h * 0.05f).toInt()
+            if (bottom - top < maxOf(8, h)) return null
+            val left = (line.left - h).coerceAtLeast(0)
+            val right = (line.right + 2 * h).coerceAtMost(imageWidth)
+            if (right - left < 8) return null
+            return Box(left, top, right, bottom)
         }
     }
 }

@@ -69,7 +69,7 @@ class TesseractFallback(private val context: Context) {
                 val api = api(lang) ?: continue
                 for ((vName, bmp) in variants) {
                     api.setImage(bmp)
-                    val text = api.utF8Text?.replace('\n', ' ')?.trim().orEmpty()
+                    val text = cleanEdges(api.utF8Text.orEmpty())
                     val conf = api.meanConfidence()
                     api.clear()
                     if (text.isNotEmpty()) out += Result(text, conf, lang, vName)
@@ -86,5 +86,14 @@ class TesseractFallback(private val context: Context) {
 
     companion object {
         val LANGS = listOf("ara", "rus")
+
+        /** Drop edge tokens without letters (stray digits, bars, quotes Tesseract adds at the borders). */
+        fun cleanEdges(raw: String): String {
+            val tokens = raw.replace('\n', ' ').trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            return tokens.dropWhile { Scripts.letterCount(it) == 0 }
+                .dropLastWhile { Scripts.letterCount(it) == 0 }
+                .joinToString(" ")
+                .trim('\'', '"', '|', '.', ',', '-', '_')
+        }
     }
 }

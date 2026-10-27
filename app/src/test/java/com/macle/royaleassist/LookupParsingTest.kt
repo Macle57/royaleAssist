@@ -56,17 +56,43 @@ class LookupParsingTest {
     @Test
     fun clanDisambiguationPicksRightRow() {
         val rows = RoyaleApiWeb.parseSearch(fixture("search_exact_macle.html")).shuffled(java.util.Random(1))
-        val found = LookupChain.pickByClan(rows, "Kings & Queens", base = 0.75)!!
+        val found = LookupChain.best(rows, "Macle", "Kings & Queens")!!
         assertEquals("98VQRGCQ", found.hit.tag)
-        val ocrNoisy = LookupChain.pickByClan(rows, "Kings 8 Queens", base = 0.75)!!
+        assertTrue(LookupChain.isStrong(found, "Kings & Queens"))
+        val ocrNoisy = LookupChain.best(rows, "MacIe", "Kings 8 Queens")!!
         assertEquals("98VQRGCQ", ocrNoisy.hit.tag)
     }
 
     @Test
     fun fuzzyPick() {
         val rows = RoyaleApiWeb.parseSearch(fixture("search_fuzzy_macle.html"))
-        val found = LookupChain.pickFuzzy(rows, "Macle", "Kings & Queens")!!
+        val found = LookupChain.best(rows, "Macle", "Kings & Queens")!!
         assertEquals("98VQRGCQ", found.hit.tag)
+    }
+
+    @Test
+    fun parsesClanSearchAndMembers() {
+        val clans = RoyaleApiWeb.parseClanSearch(fixture("clan_search_eternal_night.html"))
+        assertTrue(clans.size >= 50)
+        assertEquals("RQUVRYYL" to "Eternal Night", clans[0])
+        val ranked = LookupChain.rankClans(clans, "Eternal Night")
+        assertTrue(ranked.take(5).all { it.second == "Eternal Night" })
+        val members = RoyaleApiWeb.parseClanMembers(fixture("clan_QCJPGQU2.html"), "QCJPGQU2", "Kings & Queens")
+        assertTrue(members.size in 10..50)
+        assertTrue(members.contains(PlayerHit("Macle", "98VQRGCQ", "Kings & Queens", "QCJPGQU2")))
+    }
+
+    @Test
+    fun ocrVariantsFixCommonMisreads() {
+        assertEquals("Royale King", LookupChain.ocrVariants("Rovale King").first())
+    }
+
+    @Test
+    fun strongMatchNeedsClan() {
+        val wrongClan = LookupChain.score(PlayerHit("Danilka Pro", "X", "\"Juggernaut\"", "Y"), "Danilka", "Juggernaut\"")
+        assertTrue(!LookupChain.isStrong(wrongClan, "Juggernaut\""))
+        val right = LookupChain.score(PlayerHit("Trainer fart", "X", "时光", "Y"), "TRaiNeR fart", "时光")
+        assertTrue(LookupChain.isStrong(right, "时光"))
     }
 
     @Test

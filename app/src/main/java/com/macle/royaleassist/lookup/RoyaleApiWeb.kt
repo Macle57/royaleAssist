@@ -13,6 +13,9 @@ import java.net.URLEncoder
  * Player page: `h1.ui.header` (name), `h2.ui.sub.header` (#TAG), `.league_info_container .item`
  *   ("14000 / 14000 PB", arena), clan in `.player_aux_info a[href^=/clan/]`, and many
  *   two-column `<tr><td>Label</td><td>Value</td></tr>` stat rows.
+ *
+ * Clan search (`/clans/search?name=`): `div.card.clanresult[data-clantag]` cards with `a.header`.
+ * Clan page (`/clan/TAG`): member rows `tr.tr_member[data-tag]` with `a.member_link` (name + tag).
  */
 object RoyaleApiWeb {
     const val BASE = "https://royaleapi.com"
@@ -23,6 +26,27 @@ object RoyaleApiWeb {
     }
 
     fun playerUrl(tag: String) = "$BASE/player/${tagNoHash(tag)}"
+
+    fun clanSearchUrl(name: String) = "$BASE/clans/search?name=${URLEncoder.encode(name, "UTF-8")}"
+
+    fun clanUrl(tag: String) = "$BASE/clan/${tagNoHash(tag)}"
+
+    /** (clanTag, clanName) pairs from the clan search page, in page order. */
+    fun parseClanSearch(html: String): List<Pair<String, String>> =
+        Jsoup.parse(html, BASE).select("div.card.clanresult[data-clantag]").mapNotNull { card ->
+            val tag = card.attr("data-clantag").trim().uppercase()
+            val name = card.selectFirst("a.header[href^=/clan/]")?.text()?.trim()
+            if (tag.isEmpty() || name.isNullOrEmpty()) null else tag to name
+        }
+
+    /** Members of a clan page as hits (clan name taken from the page title header). */
+    fun parseClanMembers(html: String, clanTag: String, clanName: String?): List<PlayerHit> =
+        Jsoup.parse(html, BASE).select("tr.tr_member[data-tag]").mapNotNull { tr ->
+            val tag = tr.attr("data-tag").trim().uppercase()
+            val a = tr.selectFirst("a.member_link") ?: return@mapNotNull null
+            val name = a.ownText().trim()
+            if (tag.isEmpty() || name.isEmpty()) null else PlayerHit(name, tag, clanName, tagNoHash(clanTag))
+        }
 
     fun parseSearch(html: String): List<PlayerHit> {
         val doc = Jsoup.parse(html, BASE)

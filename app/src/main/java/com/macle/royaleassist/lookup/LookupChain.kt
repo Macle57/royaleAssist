@@ -7,14 +7,22 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * Turns an OCR'd player name (+ optional clan name) into a player tag and basic stats by trying a
- * chain of strategies in order. Each step logs to logcat (tag RoyaleAssist) and into [LookupResult.log].
+ * chain of strategies. Every strategy yields candidate players; each candidate is scored by name
+ * similarity and (when a clan was read) clan similarity. The chain stops at the first *strong*
+ * candidate (name and clan both match); otherwise it keeps going and finally returns the best
+ * acceptable candidate. Each step logs to logcat (tag RoyaleAssist) and into [LookupResult.log].
  *
- *  L1  RoyaleAPI website, exact case-sensitive name search; disambiguate by clan similarity.
- *  L2  RoyaleAPI website, fuzzy name search; rank by name + clan similarity.
- *  L3  Official API (token only): search clans by OCR'd clan name, then fuzzy-match the member list.
+ *  L1   RoyaleAPI website, "exact" name search (case-sensitive; the site still returns prefixes).
+ *  L2   RoyaleAPI website, fuzzy name search.
+ *  L2v  Fuzzy search again with typical OCR confusions fixed (v->y, rn->m, 0->O, ...).
+ *  L2c  RoyaleAPI website clan search by the OCR'd clan name, then that clan's member list.
+ *  L3   Official API (token only): clan search, then member list.
  *
- * Stats come from the official API when a token is configured, else from the RoyaleAPI profile page,
- * else just the search hit.
+ * The game font draws lowercase as small capitals, so OCR case is unreliable ("TRaiNeR fart");
+ * all comparisons are case-insensitive and the exact search is only the cheap first try.
+ *
+ * Stats come from the official API when a token is configured, else from the RoyaleAPI profile
+ * page, else just the search hit.
  */
 class LookupChain(
     private val http: HttpClients,
@@ -22,64 +30,73 @@ class LookupChain(
 ) {
     private val api = OfficialApi(http)
 
-    data class Found(val hit: PlayerHit, val confidence: Double, val alternatives: List<PlayerHit> = emptyList())
+    data class Scored(val hit: PlayerHit, val nameSim: Double, val clanSim: Double, val score: Double)
 
     private class Ctx(val name: String, val clan: String?, val token: String?) {
         val log = mutableListOf<String>()
         var cloudflareBlocked = false
+        val candidates = LinkedHashMap<String, Scored>()
         fun log(msg: String) { L.i("lookup: $msg"); log += msg }
     }
 
-    private interface Strategy {
-        val id: String
-        suspend fun find(ctx: Ctx): Found?
-    }
+    private class Strategy(val id: String, val web: Boolean, val run: suspend (Ctx) -> List<PlayerHit>)
 
-    private val strategies: List<Strategy> = listOf(
-        object : Strategy {
-            override val id = "L1 RoyaleAPI exact search"
-            override suspend fun find(ctx: Ctx): Found? {
-                if (ctx.cloudflareBlocked) return null
-                val rows = RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = true)))
-                ctx.log("$id: ${rows.size} rows")
-                return pickByClan(rows, ctx.clan, base = 0.75, log = ctx::log)
-            }
+    private val strategies = listOf(
+        Strategy("L1 RoyaleAPI exact search", web = true) { ctx ->
+            RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = true)))
         },
-        object : Strategy {
-            override val id = "L2 RoyaleAPI fuzzy search"
-            override suspend fun find(ctx: Ctx): Found? {
-                if (ctx.cloudflareBlocked) return null
-                val rows = RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = false)))
-                ctx.log("$id: ${rows.size} rows")
-                return pickFuzzy(rows, ctx.name, ctx.clan, log = ctx::log)
-            }
+        Strategy("L2 RoyaleAPI fuzzy search", web = true) { ctx ->
+            RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(ctx.name, exact = false)))
         },
-        object : Strategy {
-            override val id = "L3 official API clan members"
-            override suspend fun find(ctx: Ctx): Found? {
-                val token = ctx.token
-                val clan = ctx.clan
-                if (token == null) { ctx.log("$id: skipped (no API token)"); return null }
-                if (clan == null || clan.trim().length < 3) { ctx.log("$id: skipped (no usable clan name)"); return null }
-                val clans = api.searchClans(clan.trim(), token)
-                    .map { it to StringSim.similarity(it.name, clan) }
-                    .filter { it.second >= 0.6 }
-                    .sortedByDescending { it.second }
-                    .take(5)
-                ctx.log("$id: ${clans.size} candidate clans for '$clan'")
-                var best: Pair<PlayerHit, Double>? = null
-                for ((c, clanSim) in clans) {
-                    val members = api.clanMembers(c.tag, token)
-                    for (m in members) {
-                        val s = StringSim.similarity(m.name, ctx.name) * 0.8 + clanSim * 0.2
-                        if (best == null || s > best.second) {
-                            best = PlayerHit(m.name, tagNoHash(m.tag), c.name, tagNoHash(c.tag)) to s
-                        }
-                    }
+        Strategy("L2v RoyaleAPI search with OCR fixes", web = true) { ctx ->
+            val out = mutableListOf<PlayerHit>()
+            for (v in ocrVariants(ctx.name).take(3)) {
+                val rows = RoyaleApiWeb.parseSearch(http.getHtml(RoyaleApiWeb.searchUrl(v, exact = false)))
+                ctx.log("  variant '$v': ${rows.size} rows")
+                out += rows
+                if (rows.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) || isStrong(score(it, v, ctx.clan), ctx.clan) }) break
+            }
+            out
+        },
+        Strategy("L2c RoyaleAPI clan members", web = true) { ctx ->
+            val clan = ctx.clan
+            if (clan == null || StringSim.normalize(clan).length < 2) {
+                emptyList()
+            } else {
+                // Clans already seen on earlier search hits come first (they carry the exact clan tag),
+                // then the clan search results.
+                val fromHits = ctx.candidates.values
+                    .filter { it.hit.clanTag != null && it.clanSim >= 0.8 }
+                    .sortedByDescending { it.clanSim }
+                    .map { it.hit.clanTag!! to (it.hit.clanName ?: clan) }
+                val clans = RoyaleApiWeb.parseClanSearch(http.getHtml(RoyaleApiWeb.clanSearchUrl(clan)))
+                val ranked = (fromHits + rankClans(clans, clan)).distinctBy { it.first }.take(MAX_CLAN_PAGES)
+                ctx.log("  ${clans.size} clans found by name, ${fromHits.map { it.first }.distinct().size} from search hits, checking ${ranked.size}")
+                val out = mutableListOf<PlayerHit>()
+                for ((tag, cName) in ranked) {
+                    val members = RoyaleApiWeb.parseClanMembers(http.getHtml(RoyaleApiWeb.clanUrl(tag)), tag, cName)
+                    out += members
+                    if (members.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) }) break
                 }
-                val b = best ?: return null
-                ctx.log("$id: best member ${b.first.name} #${b.first.tag} score=${"%.2f".format(b.second)}")
-                return if (b.second >= 0.7) Found(b.first, b.second) else null
+                out
+            }
+        },
+        Strategy("L3 official API clan members", web = false) { ctx ->
+            val token = ctx.token
+            val clan = ctx.clan
+            when {
+                token == null -> { ctx.log("  skipped (no API token)"); emptyList() }
+                clan == null || clan.trim().length < 3 -> { ctx.log("  skipped (no usable clan name)"); emptyList() }
+                else -> {
+                    val clans = rankClans(api.searchClans(clan.trim(), token).map { it.tag to it.name }, clan).take(MAX_CLAN_PAGES)
+                    val out = mutableListOf<PlayerHit>()
+                    for ((tag, cName) in clans) {
+                        val members = api.clanMembers(tag, token).map { PlayerHit(it.name, tagNoHash(it.tag), cName, tagNoHash(tag)) }
+                        out += members
+                        if (members.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) }) break
+                    }
+                    out
+                }
             }
         },
     )
@@ -93,47 +110,65 @@ class LookupChain(
         if (cleanName.isBlank()) return LookupResult(name, clan, null, null, 0.0, null, log = ctx.log, error = "Empty name")
 
         // A tag typed directly ("#98VQRGCQ") skips the search.
-        if (cleanName.startsWith("#") && cleanName.length in 4..15) {
-            val tag = tagNoHash(cleanName)
-            return finish(ctx, Found(PlayerHit(cleanName, tag), 1.0), "direct tag")
+        if (TAG_RE.matches(cleanName)) {
+            return finish(ctx, Scored(PlayerHit(cleanName, tagNoHash(cleanName)), 1.0, 0.0, 1.0), "direct tag", emptyList())
         }
 
+        var bestFrom: String? = null
         for (s in strategies) {
-            val found = try {
-                s.find(ctx)
+            if (s.web && ctx.cloudflareBlocked) continue
+            val hits = try {
+                s.run(ctx)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: CloudflareBlockedException) {
                 ctx.cloudflareBlocked = true
                 ctx.log("${s.id}: blocked by Cloudflare (open the verifier once)")
-                null
+                emptyList()
             } catch (e: Exception) {
                 ctx.log("${s.id}: failed: ${e.message}")
-                null
+                emptyList()
             }
-            if (found != null) {
-                ctx.log("${s.id}: picked ${found.hit.name} #${found.hit.tag} (${found.hit.clanName ?: "no clan"}) conf=${"%.2f".format(found.confidence)}")
-                return finish(ctx, found, s.id)
+            if (hits.isEmpty()) { ctx.log("${s.id}: no candidates"); continue }
+            val scored = hits.map { score(it, ctx.name, ctx.clan) }
+            val prevBest = ctx.candidates.values.maxByOrNull { it.score }
+            for (c in scored) {
+                val old = ctx.candidates[c.hit.tag]
+                if (old == null || c.score > old.score) ctx.candidates[c.hit.tag] = c
             }
+            val top = scored.maxBy { it.score }
+            ctx.log("${s.id}: ${hits.size} candidates, best ${describe(top)}")
+            if (prevBest == null || top.score > prevBest.score) bestFrom = s.id
+            if (isStrong(top, ctx.clan)) return finish(ctx, top, s.id, alternatives(ctx, top))
+        }
+        val best = ctx.candidates.values.maxByOrNull { it.score }
+        if (best != null && best.nameSim >= MIN_NAME_SIM) {
+            ctx.log("no strong match; using best weak candidate ${describe(best)}")
+            return finish(ctx, best, bestFrom ?: "best weak candidate", alternatives(ctx, best))
         }
         ctx.log("no strategy found a player")
         return LookupResult(
             name, clan, null, null, 0.0, null,
+            alternatives = ctx.candidates.values.sortedByDescending { it.score }.take(5).map { it.hit },
             needsVerification = ctx.cloudflareBlocked, log = ctx.log,
             error = if (ctx.cloudflareBlocked) "RoyaleAPI needs verification" else "Player not found",
         )
     }
 
-    private suspend fun finish(ctx: Ctx, found: Found, strategy: String): LookupResult {
+    private fun alternatives(ctx: Ctx, chosen: Scored) =
+        ctx.candidates.values.filter { it.hit.tag != chosen.hit.tag }.sortedByDescending { it.score }.take(5).map { it.hit }
+
+    private suspend fun finish(ctx: Ctx, found: Scored, strategy: String, alternatives: List<PlayerHit>): LookupResult {
+        ctx.log("$strategy: picked ${describe(found)}")
         val stats = fetchStats(ctx, found.hit)
         return LookupResult(
             query = ctx.name,
             clanQuery = ctx.clan,
             hit = found.hit,
             strategy = strategy,
-            confidence = found.confidence,
+            confidence = found.score,
             stats = stats,
-            alternatives = found.alternatives,
+            alternatives = alternatives,
             needsVerification = ctx.cloudflareBlocked,
             log = ctx.log,
         )
@@ -173,38 +208,49 @@ class LookupChain(
     }
 
     companion object {
+        const val STRONG_NAME_SIM = 0.85
+        const val STRONG_CLAN_SIM = 0.75
+        const val MIN_NAME_SIM = 0.72
+        const val MAX_CLAN_PAGES = 6
+        private val TAG_RE = Regex("#[0289PYLQGRJCUV]{3,14}", RegexOption.IGNORE_CASE)
+
         /** Strip OCR noise around a name: surrounding quotes/stars/pipes and extra spaces. */
         fun cleanOcrName(s: String): String =
             s.replace(Regex("\\s+"), " ")
                 .trim()
-                .trim('|', '*', '★', '☆', '•', '·', '_', '-', '~')
+                .trim('|', '*', '★', '☆', '•', '·', '_', '-', '~', '"', '\'', '“', '”')
                 .trim()
 
-        fun pickByClan(rows: List<PlayerHit>, clan: String?, base: Double, log: (String) -> Unit = {}): Found? {
-            if (rows.isEmpty()) return null
-            if (rows.size == 1) {
-                val clanSim = if (clan != null) StringSim.similarity(rows[0].clanName, clan) else 0.0
-                return Found(rows[0], (base + 0.15 + 0.1 * clanSim).coerceAtMost(1.0))
-            }
-            if (clan == null) return Found(rows[0], base - 0.25, rows.drop(1).take(5))
-            val scored = rows.map { it to StringSim.similarity(it.clanName, clan) }.sortedByDescending { it.second }
-            val (best, sim) = scored.first()
-            log("clan disambiguation: best '${best.clanName}' sim=${"%.2f".format(sim)} of ${rows.size}")
-            val conf = if (sim >= 0.8) base + 0.2 else if (sim >= 0.6) base else base - 0.3
-            return Found(best, conf.coerceIn(0.0, 1.0), scored.drop(1).take(5).map { it.first })
+        fun score(hit: PlayerHit, name: String, clan: String?): Scored {
+            val ns = StringSim.similarity(hit.name, name)
+            val cs = if (clan != null) StringSim.similarity(hit.clanName, clan) else 0.0
+            val score = if (clan != null) ns * 0.6 + cs * 0.4 else ns
+            return Scored(hit, ns, cs, score)
         }
 
-        fun pickFuzzy(rows: List<PlayerHit>, name: String, clan: String?, log: (String) -> Unit = {}): Found? {
-            if (rows.isEmpty()) return null
-            val scored = rows.map { r ->
-                val ns = StringSim.similarity(r.name, name)
-                val cs = if (clan != null) StringSim.similarity(r.clanName, clan) else 0.0
-                Triple(r, ns, if (clan != null) ns * 0.65 + cs * 0.35 else ns)
-            }.sortedByDescending { it.third }
-            val (best, ns, score) = scored.first()
-            log("fuzzy best '${best.name}' (${best.clanName}) nameSim=${"%.2f".format(ns)} score=${"%.2f".format(score)}")
-            if (ns < 0.72) return null
-            return Found(best, score.coerceIn(0.0, 1.0), scored.drop(1).take(5).map { it.first })
+        fun isStrong(s: Scored, clan: String?) =
+            s.nameSim >= STRONG_NAME_SIM && (clan == null || s.clanSim >= STRONG_CLAN_SIM)
+
+        /** Best candidate among [rows] for a name/clan; used by tests and the chain. */
+        fun best(rows: List<PlayerHit>, name: String, clan: String?): Scored? =
+            rows.map { score(it, name, clan) }.maxByOrNull { it.score }
+
+        /** Clans whose name matches the OCR'd clan, exact (case-sensitive) matches first. */
+        fun rankClans(clans: List<Pair<String, String>>, clan: String): List<Pair<String, String>> =
+            clans.map { it to StringSim.similarity(it.second, clan) }
+                .filter { it.second >= 0.8 }
+                .sortedWith(compareByDescending<Pair<Pair<String, String>, Double>> { it.first.second.trim() == clan.trim() }.thenByDescending { it.second })
+                .map { it.first }
+
+        /** Name variants that undo typical ML Kit misreads of the game font. */
+        fun ocrVariants(name: String): List<String> {
+            val subs = listOf("v" to "y", "V" to "Y", "rn" to "m", "0" to "O", "1" to "l", "I" to "l", "l" to "I", "5" to "S", "u" to "v", "c" to "e")
+            return subs.mapNotNull { (a, b) -> if (name.contains(a)) name.replace(a, b) else null }
+                .filter { it != name }
+                .distinct()
         }
+
+        private fun describe(s: Scored) =
+            "'${s.hit.name}' #${s.hit.tag} (${s.hit.clanName ?: "no clan"}) name=${"%.2f".format(s.nameSim)} clan=${"%.2f".format(s.clanSim)} score=${"%.2f".format(s.score)}"
     }
 }
