@@ -15,6 +15,7 @@ import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -52,11 +54,16 @@ import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
 /**
- * Foreground service that owns the floating bubble, the result panel and the screen capture.
+ * Foreground service that owns the floating bubble, the result panel, the scan-region editor and
+ * the screen capture.
  *
  * Foreground type: `specialUse` while only the bubble is shown (Android 14+ forbids the
  * mediaProjection type before consent), upgraded to `mediaProjection|specialUse` once the user
  * grants capture consent.
+ *
+ * Panel lifecycle: results appear compact next to the bubble and hide after [AUTO_HIDE_MS]
+ * ("not found" after [NOT_FOUND_HIDE_MS]). Tapping the panel pins it (timer cancelled, line list
+ * shown); the close button hides it; tapping the bubble always starts a new scan.
  */
 class OverlayService : Service() {
 
@@ -67,16 +74,19 @@ class OverlayService : Service() {
     private lateinit var capturer: ScreenCapturer
     private val app get() = application as RoyaleAssistApp
 
-    private val bubbleOwner = OverlayViewOwner()
-    private val panelOwner = OverlayViewOwner()
+    private val owners = HashMap<View, OverlayViewOwner>()
     private var bubbleRoot: DragFrame? = null
     private var panelRoot: View? = null
+    private var regionRoot: View? = null
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private var panelParams: WindowManager.LayoutParams? = null
 
     private val panel = MutableStateFlow<PanelState>(PanelState.Hidden)
+    private val pinned = MutableStateFlow(false)
     private val busy = MutableStateFlow(false)
     private var job: Job? = null
+    private var hideJob: Job? = null
+    private var previewJob: Job? = null
     private var pendingCapture = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -99,7 +109,7 @@ class OverlayService : Service() {
             // Re-run the lookup automatically after the user passed the RoyaleAPI check.
             VerifyActivity.verified.drop(1).collect {
                 val s = panel.value
-                if (s is PanelState.Done) s.pick.name?.let { pickLine(it, s.lines) }
+                if (s is PanelState.Result) s.pick.name?.let { pickLine(it, s.lines) }
             }
         }
         L.i("service: created")
@@ -115,9 +125,11 @@ class OverlayService : Service() {
             }
             ACTION_PROJECTION_DENIED -> {
                 pendingCapture = false
-                showPanel(PanelState.Failed("Screen capture was not allowed. Tap the bubble to ask again."))
+                showPanel(PanelState.NotFound("Screen capture was not allowed. Tap the bubble to ask again."))
             }
             ACTION_CAPTURE -> onBubbleTap()
+            ACTION_EDIT_REGION -> scope.launch { showRegionEditor() }
+            ACTION_SHOW_REGION -> scope.launch { flashRegion() }
         }
         return START_STICKY
     }
@@ -128,7 +140,7 @@ class OverlayService : Service() {
         _status.update { it.copy(capturing = ok) }
         if (!ok) {
             goForeground(withProjection = false)
-            showPanel(PanelState.Failed("Could not start screen capture."))
+            showPanel(PanelState.NotFound("Could not start screen capture."))
             return
         }
         if (pendingCapture) {
@@ -153,7 +165,7 @@ class OverlayService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_bubble)
             .setContentTitle("royaleAssist is running")
-            .setContentText("Tap the crown bubble during a battle to scout the opponent.")
+            .setContentText("Tap the crown bubble in a battle. Long-press it to set the scan region.")
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
@@ -177,21 +189,38 @@ class OverlayService : Service() {
 
     // ---- windows ----
 
-    private fun overlayType() = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-
     private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()
 
+    private fun overlayParams(width: Int, height: Int, extraFlags: Int = 0) = WindowManager.LayoutParams(
+        width, height,
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or extraFlags,
+        PixelFormat.TRANSLUCENT,
+    ).apply { gravity = Gravity.TOP or Gravity.START }
+
+    /** Wraps Compose content in a view with lifecycle owners attached (see [OverlayViewOwner]). */
+    private fun composeView(content: @Composable () -> Unit): ComposeView {
+        val owner = OverlayViewOwner()
+        return ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setContent { RoyalTheme(content) }
+            owner.attach(this)
+            owner.resume()
+            owners[this] = owner
+        }
+    }
+
+    private fun removeWindow(view: View?) {
+        if (view == null) return
+        runCatching { wm.removeView(view) }
+        owners.remove(view)?.destroy()
+    }
+
     private fun addBubble() {
-        bubbleParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
+        bubbleParams = overlayParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
             x = dp(8)
             y = resources.displayMetrics.heightPixels / 3
         }
@@ -204,7 +233,9 @@ class OverlayService : Service() {
             },
             onDragEnd = { clampBubble(); positionPanel() },
             onTap = { onBubbleTap() },
+            onLongPress = { scope.launch { showRegionEditor() } },
         )
+        val owner = OverlayViewOwner().also { owners[root] = it }
         root.addView(ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
@@ -212,8 +243,8 @@ class OverlayService : Service() {
                 RoyalTheme { Bubble(isBusy) }
             }
         })
-        bubbleOwner.attach(root)
-        bubbleOwner.resume()
+        owner.attach(root)
+        owner.resume()
         wm.addView(root, bubbleParams)
         bubbleRoot = root
     }
@@ -226,54 +257,52 @@ class OverlayService : Service() {
         bubbleRoot?.let { wm.updateViewLayout(it, bubbleParams) }
     }
 
-    private fun showPanel(state: PanelState) {
+    private fun showPanel(state: PanelState, pin: Boolean = false) {
+        hideJob?.cancel()
         panel.value = state
         if (state is PanelState.Hidden) { removePanel(); return }
-        if (panelRoot != null) return
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType(),
-            // Not focusable: touches outside the panel still reach the game; scrolling works anyway.
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START }
-        panelParams = params
-        val view = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent {
+        pinned.value = pin
+        if (panelRoot == null) {
+            val params = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            panelParams = params
+            val view = composeView {
                 val s by panel.collectAsState()
-                RoyalTheme {
-                    Panel(
-                        state = s,
-                        onClose = { cancelJob(); showPanel(PanelState.Hidden) },
-                        onRetry = { onBubbleTap() },
-                        onPickLine = { line ->
-                            val lines = when (val cur = panel.value) {
-                                is PanelState.Done -> cur.lines
-                                is PanelState.Failed -> cur.lines
-                                is PanelState.Working -> cur.lines
-                                else -> emptyList()
-                            }
-                            pickLine(line, lines)
-                        },
-                        onVerify = { openVerifier() },
-                    )
-                }
+                val isPinned by pinned.collectAsState()
+                Panel(
+                    state = s,
+                    pinned = isPinned,
+                    onPin = { pinPanel() },
+                    onClose = { cancelJob(); showPanel(PanelState.Hidden) },
+                    onRetry = { onBubbleTap() },
+                    onPickLine = { line -> pickLine(line, panel.value.linesOrEmpty) },
+                    onVerify = { openVerifier() },
+                )
+            }
+            positionPanel(params)
+            wm.addView(view, params)
+            panelRoot = view
+        }
+        if (!pin) {
+            val ms = if (state is PanelState.NotFound) NOT_FOUND_HIDE_MS else AUTO_HIDE_MS
+            hideJob = scope.launch {
+                delay(ms)
+                if (!pinned.value) showPanel(PanelState.Hidden)
             }
         }
-        panelOwner.attach(view)
-        panelOwner.resume()
-        positionPanel(params)
-        wm.addView(view, params)
-        panelRoot = view
+    }
+
+    private fun pinPanel() {
+        if (pinned.value) return
+        hideJob?.cancel()
+        pinned.value = true
+        L.i("service: panel pinned")
     }
 
     private fun positionPanel(params: WindowManager.LayoutParams? = panelParams) {
         val p = params ?: return
         val dm = resources.displayMetrics
         val bubble = dp(56)
-        val panelW = dp(300)
+        val panelW = dp(264)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
         p.x = if (onLeft) bubbleParams.x + bubble + dp(6) else bubbleParams.x - panelW - dp(6)
         p.x = p.x.coerceIn(0, (dm.widthPixels - panelW).coerceAtLeast(0))
@@ -282,15 +311,86 @@ class OverlayService : Service() {
     }
 
     private fun removePanel() {
-        panelRoot?.let { runCatching { wm.removeView(it) } }
+        hideJob?.cancel()
+        removeWindow(panelRoot)
         panelRoot = null
         panelParams = null
+        pinned.value = false
+    }
+
+    /** Full-display window: same pixel grid as the capture, including status bar and cutout. */
+    private fun fullScreenParams(extraFlags: Int): WindowManager.LayoutParams {
+        val b = if (Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds else null
+        val w = b?.width() ?: resources.displayMetrics.widthPixels
+        val h = b?.height() ?: resources.displayMetrics.heightPixels
+        return overlayParams(w, h, WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or extraFlags).apply {
+            x = 0; y = 0
+            if (Build.VERSION.SDK_INT >= 30) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= 28) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
+    private fun removeRegionWindow() {
+        previewJob?.cancel()
+        removeWindow(regionRoot)
+        regionRoot = null
+    }
+
+    private suspend fun showRegionEditor() {
+        removeRegionWindow()
+        showPanel(PanelState.Hidden)
+        val current = app.settings.currentScanRegion()
+        val view = composeView {
+            RegionEditor(
+                initial = current,
+                onSave = { r ->
+                    scope.launch {
+                        app.settings.setScanRegion(r)
+                        L.i("service: scan region saved $r")
+                        removeRegionWindow()
+                        flashRegion()
+                    }
+                },
+                onReset = {
+                    scope.launch {
+                        app.settings.setScanRegion(null)
+                        L.i("service: scan region reset")
+                        showRegionEditor()
+                    }
+                },
+                onCancel = { removeRegionWindow() },
+            )
+        }
+        wm.addView(view, fullScreenParams(0))
+        regionRoot = view
+        view.post {
+            val loc = IntArray(2).also { view.getLocationOnScreen(it) }
+            L.i("service: region editor at (${loc[0]},${loc[1]}) size ${view.width}x${view.height}")
+        }
+    }
+
+    /** Flashes the saved scan region for a moment (touches pass through). */
+    private suspend fun flashRegion() {
+        removeRegionWindow()
+        val region = app.settings.currentScanRegion()
+        val view = composeView { RegionPreview(region) }
+        wm.addView(view, fullScreenParams(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE))
+        regionRoot = view
+        L.i("service: showing scan region $region")
+        previewJob = scope.launch {
+            delay(REGION_FLASH_MS)
+            if (regionRoot === view) removeRegionWindow()
+        }
     }
 
     private fun setOverlaysVisible(visible: Boolean) {
         val v = if (visible) View.VISIBLE else View.INVISIBLE
         bubbleRoot?.visibility = v
         panelRoot?.visibility = v
+        regionRoot?.visibility = v
     }
 
     private suspend fun awaitFrame() = suspendCancellableCoroutine { cont ->
@@ -310,12 +410,13 @@ class OverlayService : Service() {
     }
 
     private fun openVerifier() {
-        val q = (panel.value as? PanelState.Done)?.pick?.name?.text
+        val q = (panel.value as? PanelState.Result)?.pick?.name?.text
         startActivity(VerifyActivity.intent(this, q))
     }
 
     private fun onBubbleTap() {
         if (job?.isActive == true) return
+        if (regionRoot != null) removeRegionWindow()
         if (!capturer.isActive) {
             L.i("service: no projection, asking for consent")
             pendingCapture = true
@@ -327,8 +428,10 @@ class OverlayService : Service() {
 
     private suspend fun runScan() {
         busy.value = true
+        val keepPinned = pinned.value
         try {
             val exclude = bubbleBox()
+            val t0 = System.currentTimeMillis()
             val bmp = capturer.capture {
                 setOverlaysVisible(false)
                 awaitFrame(); awaitFrame()
@@ -336,25 +439,30 @@ class OverlayService : Service() {
             }
             setOverlaysVisible(true)
             if (bmp == null) {
-                showPanel(PanelState.Failed("Could not grab the screen. Tap Scan again."))
+                showPanel(PanelState.NotFound("Could not grab the screen. Tap the bubble to try again."))
                 return
             }
-            L.i("service: captured ${bmp.width}x${bmp.height}")
-            showPanel(PanelState.Working("Reading the screen..."))
-            val ocr = withContext(Dispatchers.Default) { app.analyzer.ocrAndPick(bmp, exclude) }
+            val region = app.settings.currentScanRegion()
+            val fallback = app.settings.fullScreenFallback.first()
+            val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(bmp, region, exclude, fallback) }
             val name = ocr.pick.name
             if (name == null) {
-                showPanel(PanelState.Failed("No player name found on screen.", ocr.lines))
+                showPanel(PanelState.NotFound("No name in the scan region. Long-press the bubble to adjust it.", ocr.lines), pin = keepPinned)
                 return
             }
-            showPanel(PanelState.Working("Looking up ${name.text}...", ocr.lines, ocr.pick))
             val result = app.analyzer.lookupPick(ocr.pick)
-            showPanel(PanelState.Done(ocr.lines, ocr.pick, result))
+            L.i("service: scan done in ${System.currentTimeMillis() - t0} ms (ocr ${ocr.millis} ms, ${ocr.mode})")
+            val found = result?.stats != null
+            showPanel(
+                if (found) PanelState.Result(ocr.lines, ocr.pick, result)
+                else PanelState.NotFound(result?.error ?: "Player not found", ocr.lines, ocr.pick),
+                pin = keepPinned,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             L.e("service: scan failed", e)
-            showPanel(PanelState.Failed("Scan failed: ${e.message}"))
+            showPanel(PanelState.NotFound("Scan failed: ${e.message}"))
         } finally {
             setOverlaysVisible(true)
             busy.value = false
@@ -368,8 +476,12 @@ class OverlayService : Service() {
         job = scope.launch {
             busy.value = true
             try {
-                showPanel(PanelState.Working("Looking up ${line.text}...", lines, pick))
-                showPanel(PanelState.Done(lines, pick, app.analyzer.lookupPick(pick)))
+                val result = app.analyzer.lookupPick(pick)
+                showPanel(
+                    if (result?.stats != null) PanelState.Result(lines, pick, result)
+                    else PanelState.NotFound(result?.error ?: "Player not found", lines, pick),
+                    pin = true,
+                )
             } finally {
                 busy.value = false
             }
@@ -380,10 +492,10 @@ class OverlayService : Service() {
         scope.cancel()
         capturer.shutdown()
         removePanel()
-        bubbleRoot?.let { runCatching { wm.removeView(it) } }
+        removeRegionWindow()
+        removeWindow(bubbleRoot)
         bubbleRoot = null
-        bubbleOwner.destroy()
-        panelOwner.destroy()
+        owners.values.forEach { it.destroy() }
         _status.value = Status(running = false, capturing = false)
         L.i("service: destroyed")
         super.onDestroy()
@@ -393,10 +505,15 @@ class OverlayService : Service() {
         const val ACTION_START = "com.macle.royaleassist.START"
         const val ACTION_STOP = "com.macle.royaleassist.STOP"
         const val ACTION_CAPTURE = "com.macle.royaleassist.CAPTURE"
+        const val ACTION_EDIT_REGION = "com.macle.royaleassist.EDIT_REGION"
+        const val ACTION_SHOW_REGION = "com.macle.royaleassist.SHOW_REGION"
         const val ACTION_PROJECTION_GRANTED = "com.macle.royaleassist.PROJECTION_GRANTED"
         const val ACTION_PROJECTION_DENIED = "com.macle.royaleassist.PROJECTION_DENIED"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
+        const val AUTO_HIDE_MS = 6_000L
+        const val NOT_FOUND_HIDE_MS = 3_500L
+        const val REGION_FLASH_MS = 2_500L
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 7
 
@@ -409,6 +526,11 @@ class OverlayService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, OverlayService::class.java))
+        }
+
+        /** Starts the service if needed and sends it [action]. */
+        fun send(context: Context, action: String) {
+            context.startForegroundService(Intent(context, OverlayService::class.java).setAction(action))
         }
     }
 }

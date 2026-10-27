@@ -34,6 +34,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -87,6 +89,8 @@ private fun SetupScreen(app: RoyaleAssistApp) {
     var canOverlay by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     val status by OverlayService.status.collectAsState()
     val savedToken by app.settings.apiToken.collectAsState(initial = null)
+    val region by app.settings.scanRegion.collectAsState(initial = com.macle.royaleassist.ocr.ScanRegion.DEFAULT)
+    val fullFallback by app.settings.fullScreenFallback.collectAsState(initial = false)
     var tokenField by remember { mutableStateOf("") }
     var tokenSaved by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("Macle") }
@@ -138,6 +142,45 @@ private fun SetupScreen(app: RoyaleAssistApp) {
             action = if (status.running) "Stop bubble" to { OverlayService.stop(context) }
             else "Start bubble" to { if (canOverlay) OverlayService.start(context) },
         )
+
+        Section("Scan region")
+        Text(
+            "Only this part of the screen is read, which is much faster than the whole screen. " +
+                "Open a battle, long-press the bubble (or tap Set scan region and switch to the game), " +
+                "then drag the box over the opponent's name and clan.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Royal.Mist,
+        )
+        Text(
+            "Now: x %d–%d%%, y %d–%d%% of the screen".format(
+                (region.left * 100).toInt(), (region.right * 100).toInt(), (region.top * 100).toInt(), (region.bottom * 100).toInt(),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            Pill("Set scan region", primary = true) {
+                if (canOverlay) OverlayService.send(context, OverlayService.ACTION_EDIT_REGION)
+            }
+            Pill("Show scan region", primary = false) {
+                if (canOverlay) OverlayService.send(context, OverlayService.ACTION_SHOW_REGION)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Full-screen fallback", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "If the region has no name, read the whole screen too. Slower.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Royal.Mist,
+                )
+            }
+            Switch(
+                checked = fullFallback,
+                onCheckedChange = { on -> scope.launch { app.settings.setFullScreenFallback(on) } },
+                colors = SwitchDefaults.colors(checkedTrackColor = Royal.Gold, checkedThumbColor = Royal.Night),
+            )
+        }
 
         Section("Clash Royale API token (optional)")
         Text(

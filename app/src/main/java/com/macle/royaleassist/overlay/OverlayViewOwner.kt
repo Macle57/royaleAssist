@@ -52,7 +52,8 @@ class OverlayViewOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
 
 /**
  * Container for the bubble that takes over all touches: drags move the window (using raw screen
- * coordinates, so moving the window under the finger does not cause jitter), short taps click.
+ * coordinates, so moving the window under the finger does not cause jitter), short taps click,
+ * and a long press (no movement) fires [onLongPress].
  */
 @SuppressLint("ViewConstructor")
 class DragFrame(
@@ -60,7 +61,10 @@ class DragFrame(
     private val onDrag: (dx: Int, dy: Int) -> Unit,
     private val onDragEnd: () -> Unit,
     private val onTap: () -> Unit,
+    private val onLongPress: () -> Unit = {},
 ) : FrameLayout(context) {
+    private var longPressed = false
+    private val longPress = Runnable { if (!dragging) { longPressed = true; onLongPress() } }
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
     private var downY = 0f
@@ -75,19 +79,25 @@ class DragFrame(
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.rawX; downY = ev.rawY; lastX = downX; lastY = downY; dragging = false
+                longPressed = false
+                postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
             }
             MotionEvent.ACTION_MOVE -> {
-                if (!dragging && (abs(ev.rawX - downX) > slop || abs(ev.rawY - downY) > slop)) dragging = true
+                if (!dragging && !longPressed && (abs(ev.rawX - downX) > slop || abs(ev.rawY - downY) > slop)) {
+                    dragging = true
+                    removeCallbacks(longPress)
+                }
                 if (dragging) {
                     onDrag((ev.rawX - lastX).toInt(), (ev.rawY - lastY).toInt())
                     lastX = ev.rawX; lastY = ev.rawY
                 }
             }
             MotionEvent.ACTION_UP -> {
-                if (dragging) onDragEnd() else { performClick(); onTap() }
+                removeCallbacks(longPress)
+                if (dragging) onDragEnd() else if (!longPressed) { performClick(); onTap() }
                 dragging = false
             }
-            MotionEvent.ACTION_CANCEL -> { if (dragging) onDragEnd(); dragging = false }
+            MotionEvent.ACTION_CANCEL -> { removeCallbacks(longPress); if (dragging) onDragEnd(); dragging = false }
         }
         return true
     }

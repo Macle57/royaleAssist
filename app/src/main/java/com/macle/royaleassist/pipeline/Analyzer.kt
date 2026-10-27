@@ -10,6 +10,7 @@ import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrEngine
 import com.macle.royaleassist.ocr.OcrLine
 import com.macle.royaleassist.ocr.Prep
+import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.ocr.Preprocess
 import com.macle.royaleassist.ocr.Scripts
 import com.macle.royaleassist.ocr.TesseractFallback
@@ -20,7 +21,18 @@ data class OcrOutcome(
     val pick: NamePick,
     val tesseractUsed: Boolean,
     val millis: Long,
+    /** "region" (cropped scan region), "whole-image" (small image treated as the region) or "full-screen". */
+    val mode: String = "whole-image",
+    /** The screen area that was OCR'd, in source image coordinates. */
+    val scanned: Box? = null,
 )
+
+/** Moves every box by (dx, dy): crop coordinates -> screen coordinates. */
+private fun OcrOutcome.offset(dx: Int, dy: Int): OcrOutcome {
+    val map = HashMap<OcrLine, OcrLine>()
+    fun m(l: OcrLine) = map.getOrPut(l) { l.copy(box = l.box.offset(dx, dy)) }
+    return copy(lines = lines.map(::m), pick = NamePick(pick.name?.let(::m), pick.clan?.let(::m)))
+}
 
 data class Analysis(
     val ocr: OcrOutcome,
@@ -36,9 +48,34 @@ class Analyzer(
     private val tesseract: TesseractFallback,
     private val lookup: LookupChain,
 ) {
-    suspend fun ocrAndPick(src: Bitmap, exclude: Box? = null, prep: Prep = Prep.DEFAULT, useTesseract: Boolean = true): OcrOutcome {
+    /**
+     * Normal entry point for a capture: OCR only the scan [region] (cropped and upscaled 2-3x), with
+     * an optional full-screen retry. Small images (the sample crops) already are the region.
+     */
+    suspend fun scan(src: Bitmap, region: ScanRegion?, exclude: Box? = null, fullScreenFallback: Boolean = false): OcrOutcome {
+        if (region == null || isRegionSized(src)) return ocrAndPick(src, exclude).copy(mode = "whole-image")
         val t0 = System.currentTimeMillis()
-        val (img, scale) = Preprocess.apply(src, prep)
+        val box = region.toBox(src.width, src.height)
+        val crop = Bitmap.createBitmap(src, box.left, box.top, box.width, box.height)
+        val scale = regionScale(box)
+        val inCrop = exclude?.offset(-box.left, -box.top)
+        val o = ocrAndPick(crop, inCrop, forcedScale = scale).offset(box.left, box.top)
+            .copy(mode = "region", scanned = box)
+        L.i("analyze: region ${box.width}x${box.height} at (${box.left},${box.top}) x$scale -> '${o.pick.name?.text}' in ${System.currentTimeMillis() - t0} ms")
+        if (o.pick.name != null || !fullScreenFallback) return o
+        L.i("analyze: nothing in the region, falling back to a full-screen scan")
+        return ocrAndPick(src, exclude).let { it.copy(mode = "full-screen", millis = it.millis + o.millis) }
+    }
+
+    suspend fun ocrAndPick(
+        src: Bitmap,
+        exclude: Box? = null,
+        prep: Prep = Prep.DEFAULT,
+        useTesseract: Boolean = true,
+        forcedScale: Float? = null,
+    ): OcrOutcome {
+        val t0 = System.currentTimeMillis()
+        val (img, scale) = Preprocess.apply(src, prep, forcedScale)
         var lines = ocr.recognize(img, scale)
         var pick = NamePicker.pick(lines, exclude)
         var tessUsed = false
@@ -73,7 +110,7 @@ class Analyzer(
         }
         val ms = System.currentTimeMillis() - t0
         L.i("analyze: name='${pick.name?.text}' (${pick.name?.source}) clan='${pick.clan?.text}' lines=${lines.size} in $ms ms")
-        return OcrOutcome(lines, pick, tessUsed, ms)
+        return OcrOutcome(lines, pick, tessUsed, ms, mode = "full-screen")
     }
 
     suspend fun analyze(src: Bitmap, exclude: Box? = null): Analysis {
@@ -86,6 +123,18 @@ class Analyzer(
         pick.name?.let { lookup.lookup(it.text, pick.clan?.text) }
 
     companion object {
+        /** Images smaller than this on both sides are treated as already being the scan region. */
+        const val REGION_SIZED_MAX = 1000
+
+        fun isRegionSized(b: Bitmap) = b.width < REGION_SIZED_MAX && b.height < REGION_SIZED_MAX
+
+        /** 3x for small crops, 2x for larger ones, never past ~2400 px on the long side. */
+        fun regionScale(box: Box): Float {
+            val longSide = maxOf(box.width, box.height).coerceAtLeast(1)
+            val s = if (longSide <= 500) 3f else 2f
+            return minOf(s, 2400f / longSide).coerceAtLeast(1f)
+        }
+
         /** ML Kit has no Arabic/Cyrillic model; a weak or garbled reading of the name triggers Tesseract. */
         fun needsTesseract(name: OcrLine): Boolean {
             val letters = Scripts.letterCount(name.text)

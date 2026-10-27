@@ -37,6 +37,17 @@ class OcrLogicTest {
     }
 
     @Test
+    fun scanRegionMapsToPixelsAndClamps() {
+        val box = com.macle.royaleassist.ocr.ScanRegion.DEFAULT.toBox(1080, 2400)
+        assertEquals(Box(0, 72, 702, 336), box)
+        val weird = com.macle.royaleassist.ocr.ScanRegion(-0.2f, 0.5f, 0.1f, 0.4f).normalized()
+        assertEquals(0f, weird.left)
+        assert(weird.bottom > weird.top && weird.right > weird.left)
+        assertEquals(2f, com.macle.royaleassist.pipeline.Analyzer.regionScale(box))
+        assertEquals(3f, com.macle.royaleassist.pipeline.Analyzer.regionScale(Box(0, 0, 400, 120)))
+    }
+
+    @Test
     fun mergePrefersChineseForHan() {
         val merged = LineMerger.merge(
             listOf(

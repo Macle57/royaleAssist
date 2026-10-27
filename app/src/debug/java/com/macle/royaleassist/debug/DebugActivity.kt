@@ -16,6 +16,8 @@ import com.macle.royaleassist.RoyaleAssistApp
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.ocr.Prep
 import com.macle.royaleassist.ocr.Preprocess
+import com.macle.royaleassist.ocr.ScanRegion
+import kotlinx.coroutines.flow.first
 import com.macle.royaleassist.pipeline.OcrOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,6 +33,8 @@ import java.io.File
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es image /sdcard/Android/data/com.macle.royaleassist/files/x.png
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode ocr --ez all true
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode variants --ez all true
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode bench --es image <1080x2400 png>
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode fullscreen --es image <png>
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode show --es asset 01-royale-king.png
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es name Macle --es clan "Kings & Queens"
  *
@@ -61,12 +65,20 @@ class DebugActivity : Activity() {
             }
             val inputs = loadInputs()
             if (inputs.isEmpty()) emit("RESULT error=no-input (use --es asset, --es image or --ez all true)")
+            val region = app.settings.currentScanRegion()
+            val fallback = app.settings.fullScreenFallback.first()
             for ((label, bmp) in inputs) {
                 when (mode) {
                     "variants" -> runVariants(label, bmp)
-                    "ocr" -> emitOcr(label, app.analyzer.ocrAndPick(bmp), null)
-                    else -> {
+                    "bench" -> runBench(label, bmp, region)
+                    "ocr" -> emitOcr(label, app.analyzer.scan(bmp, region, fullScreenFallback = fallback), null)
+                    "fullscreen" -> {
                         val o = app.analyzer.ocrAndPick(bmp)
+                        emitOcr(label, o, o.pick.name?.let { app.lookup.lookup(it.text, o.pick.clan?.text) })
+                    }
+                    else -> {
+                        // Same path as the bubble: region crop (small images count as the region).
+                        val o = app.analyzer.scan(bmp, region, fullScreenFallback = fallback)
                         val r = o.pick.name?.let { app.lookup.lookup(it.text, o.pick.clan?.text) }
                         emitOcr(label, o, r)
                     }
@@ -88,6 +100,18 @@ class DebugActivity : Activity() {
             runCatching { assets.open(a).use { BitmapFactory.decodeStream(it) } }.getOrNull()?.let { list += a to it }
         }
         return list
+    }
+
+    /** OCR timing: whole screen vs. scan region, after one warm-up run of each. */
+    private suspend fun runBench(label: String, bmp: Bitmap, region: ScanRegion) {
+        val runs = intent.getIntExtra("runs", 5)
+        app.analyzer.ocrAndPick(bmp)
+        app.analyzer.scan(bmp, region)
+        val full = (1..runs).map { app.analyzer.ocrAndPick(bmp) }
+        val reg = (1..runs).map { app.analyzer.scan(bmp, region) }
+        fun stats(l: List<OcrOutcome>) = l.map { it.millis }.let { "avg=${it.average().toInt()}ms min=${it.min()} max=${it.max()}" }
+        emit("BENCH $label ${bmp.width}x${bmp.height} runs=$runs fullscreen[${stats(full)} name='${full.last().pick.name?.text}'] " +
+            "region[${stats(reg)} name='${reg.last().pick.name?.text}' clan='${reg.last().pick.clan?.text}' box=${reg.last().scanned}]")
     }
 
     private suspend fun runVariants(label: String, bmp: Bitmap) {
@@ -114,7 +138,7 @@ class DebugActivity : Activity() {
         val lines = o.lines.joinToString(" | ") { "'${it.text}'(${it.source},h=${it.box.height},c=${"%.2f".format(it.confidence)})" }
         emit(
             "RESULT sample=$label name='${o.pick.name?.text ?: ""}' clan='${o.pick.clan?.text ?: ""}' " +
-                "nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} ocrMs=${o.millis}" +
+                "nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} mode=${o.mode} ocrMs=${o.millis}" +
                 (r?.let { " " + describe(it) } ?: "")
         )
         emit("LINES sample=$label $lines")
