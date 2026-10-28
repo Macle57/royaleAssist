@@ -33,6 +33,7 @@ import java.io.File
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es image /sdcard/Android/data/com.macle.royaleassist/files/x.png
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode ocr --ez all true
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode variants --ez all true
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --ez corpus true [--es only <file>] [--es region x0,y0,x1,y1]
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode bench --es image <1080x2400 png>
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode fullscreen --es image <png>
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode show --es asset 01-royale-king.png
@@ -63,13 +64,19 @@ class DebugActivity : Activity() {
                 emit("RESULT lookup name='$name' clan='${clan ?: ""}' ${describe(r)}")
                 return@launch
             }
-            val inputs = loadInputs()
-            if (inputs.isEmpty()) emit("RESULT error=no-input (use --es asset, --es image or --ez all true)")
             // --es region x0,y0,x1,y1 (fractions) overrides the saved scan region.
             val region = intent.getStringExtra("region")?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }
                 ?.takeIf { it.size == 4 }?.let { ScanRegion(it[0], it[1], it[2], it[3]).normalized() }
                 ?: app.settings.currentScanRegion()
             emit("REGION $region")
+            if (intent.getBooleanExtra("corpus", false)) {
+                // --ez corpus true [--es only <file substring>]: batch OCR + picking over assets/corpus.
+                CorpusRunner(applicationContext, app.analyzer, ::emit).run(region, intent.getStringExtra("only"))
+                emit("DONE")
+                return@launch
+            }
+            val inputs = loadInputs()
+            if (inputs.isEmpty()) emit("RESULT error=no-input (use --es asset, --es image or --ez all true)")
             val fallback = app.settings.fullScreenFallback.first()
             for ((label, bmp) in inputs) {
                 when (mode) {

@@ -58,6 +58,7 @@ object NamePicker {
             l.box.height <= 0 -> "empty box"
             exclude != null && l.box.overlapRatio(exclude) >= 0.3 -> "under the bubble"
             isGameLabel(l.text) -> "game label"
+            ClanText.isNoClanPlaceholder(l.text) -> "no-clan placeholder"
             isMostlyDigits(l.text) -> "number/timer"
             letters < 2 -> "fewer than 2 letters"
             !isLatin(l) && letters <= 2 && l.confidence < 0.7f &&
@@ -72,6 +73,7 @@ object NamePicker {
 
     fun pick(lines: List<OcrLine>, exclude: Box? = null): NamePick {
         val c = candidates(lines, exclude)
+        val placeholders = lines.filter { ClanText.isNoClanPlaceholder(it.text) }
         val rejected = lines.filter { it !in c }.joinToString { "'${it.text}' (${rejectReason(it, lines, exclude)})" }
         val warm = c.filter { it.warmth >= WARM }
         val name: OcrLine
@@ -84,15 +86,20 @@ object NamePicker {
                 ?: return NamePick(null, null, "no candidates" + if (rejected.isNotEmpty()) "; rejected $rejected" else "")
             why = "tallest line (no name-coloured line)"
         }
-        val clan = clanFor(name, c)
+        // The clan slot may hold "No Clan" (and translations): then the player has no clan.
+        val clan = clanFor(name, c + placeholders)?.takeUnless { ClanText.isNoClanPlaceholder(it.text) }
         return NamePick(name, clan, why + if (rejected.isNotEmpty()) "; rejected $rejected" else "")
     }
 
     private fun effectiveHeight(l: OcrLine) = if (isLatin(l)) l.box.height.toDouble() else l.box.height * 0.8
 
     /** Re-pick with a user-chosen name line (tap in the panel). */
-    fun pickWithName(name: OcrLine, lines: List<OcrLine>): NamePick =
-        NamePick(name, clanFor(name, candidates(lines)), "chosen by the user")
+    fun pickWithName(name: OcrLine, lines: List<OcrLine>): NamePick = NamePick(
+        name,
+        clanFor(name, candidates(lines) + lines.filter { ClanText.isNoClanPlaceholder(it.text) })
+            ?.takeUnless { ClanText.isNoClanPlaceholder(it.text) },
+        "chosen by the user",
+    )
 
     fun clanFor(name: OcrLine, lines: List<OcrLine>): OcrLine? {
         val nb = name.box

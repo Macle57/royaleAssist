@@ -81,7 +81,8 @@ class Analyzer(
                 L.i("analyze: $why; retrying with the region grown to ${grown.width}x${grown.height} at (${grown.left},${grown.top})")
                 val o2 = scanBox(src, grown, exclude)
                 val better = o2.pick.name != null && (o.pick.name == null || o2.pick.name.warmth >= NamePicker.WARM ||
-                    o.pick.name.warmth < NamePicker.WARM && o2.pick.name.box.height > o.pick.name.box.height)
+                    o.pick.name.warmth < NamePicker.WARM && o2.pick.name.box.height > o.pick.name.box.height ||
+                    o.pick.clan == null && o2.pick.clan != null && o2.pick.name.text == o.pick.name.text)
                 L.i("analyze: grown region -> '${o2.pick.name?.text}' (${if (better) "used" else "kept first result"})")
                 if (better) o = o2.copy(expanded = true, firstScanned = box, millis = o.millis + o2.millis)
             }
@@ -263,13 +264,18 @@ class Analyzer(
         fun expandReason(o: OcrOutcome, box: Box): String? {
             val n = o.pick.name ?: return "no name in the region"
             if (n.box.top - box.top <= 3) return "name '${n.text}' touches the top of the region"
+            // Clan probably below the region (pillarboxed or low frames): name near the bottom edge,
+            // no clan read and no "No Clan" placeholder either.
+            if (o.pick.clan == null && box.bottom - n.box.bottom < n.box.height * 1.5 &&
+                o.lines.none { com.macle.royaleassist.ocr.ClanText.isNoClanPlaceholder(it.text) }
+            ) return "name '${n.text}' sits at the bottom of the region with no clan below"
             if (n.warmth < NamePicker.WARM) return "no name-coloured line (picked '${n.text}', warmth ${"%.2f".format(n.warmth)})"
             return null
         }
 
-        /** Region grown by 8 % of the screen height upward and 2 % downward. */
+        /** Region grown by 8 % of the screen height upward and 5 % downward. */
         fun expandBox(b: Box, w: Int, h: Int): Box =
-            Box(b.left, (b.top - (h * 0.08).toInt()).coerceAtLeast(0), b.right, (b.bottom + (h * 0.02).toInt()).coerceAtMost(h))
+            Box(b.left, (b.top - (h * 0.08).toInt()).coerceAtLeast(0), b.right, (b.bottom + (h * 0.05).toInt()).coerceAtMost(h))
 
         /** Images smaller than this on both sides are treated as already being the scan region. */
         const val REGION_SIZED_MAX = 1000

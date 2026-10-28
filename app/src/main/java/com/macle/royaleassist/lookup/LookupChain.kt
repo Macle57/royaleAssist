@@ -64,6 +64,18 @@ class LookupChain(
         Strategy("L2 RoyaleAPI fuzzy search", web = true) { ctx ->
             searchRows(ctx, RoyaleApiWeb.searchUrl(ctx.name, exact = false))
         },
+        Strategy("L2s RoyaleAPI search without symbols", web = true) { ctx ->
+            // OCR turns ⚡ ★ ❤ ™ into stray characters; the site also finds names with the symbols
+            // removed, and mixed Latin+CJK names when the scripts are separated by a space.
+            val out = mutableListOf<PlayerHit>()
+            for (q in symbolVariants(ctx.name)) {
+                val rows = searchRows(ctx, RoyaleApiWeb.searchUrl(q, exact = false))
+                ctx.log("  without symbols '$q': ${rows.size} rows")
+                out += rows
+                if (rows.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) }) break
+            }
+            out
+        },
         Strategy("L2p RoyaleAPI prefix search", web = true) { ctx ->
             // RoyaleAPI matches word prefixes (not substrings), and long or misread names return
             // nothing. Shorter prefixes of the OCR reading still reach the player; candidates are
@@ -103,8 +115,10 @@ class LookupChain(
                     .filter { it.hit.clanTag != null && it.clanSim >= 0.8 }
                     .sortedByDescending { it.clanSim }
                     .map { it.hit.clanTag!! to (it.hit.clanName ?: clan) }
-                val clans = RoyaleApiWeb.parseClanSearch(http.getHtml(RoyaleApiWeb.clanSearchUrl(clan)))
-                val ranked = (fromHits + rankClans(clans, clan)).distinctBy { it.first }.take(MAX_CLAN_PAGES)
+                // The clan slot sometimes shows a tag ("Klan: #GORGQPCJ"): use it directly.
+                val tagged = CLAN_TAG_RE.find(clan)?.groupValues?.get(1)?.uppercase()?.let { listOf(it to clan) }.orEmpty()
+                val clans = if (tagged.isNotEmpty()) emptyList() else RoyaleApiWeb.parseClanSearch(http.getHtml(RoyaleApiWeb.clanSearchUrl(clan)))
+                val ranked = (tagged + fromHits + rankClans(clans, clan)).distinctBy { it.first }.take(MAX_CLAN_PAGES)
                 ctx.log("  ${clans.size} clans found by name, ${fromHits.map { it.first }.distinct().size} from search hits, checking ${ranked.size}")
                 val out = mutableListOf<PlayerHit>()
                 for ((tag, cName) in ranked) {
@@ -155,7 +169,8 @@ class LookupChain(
     suspend fun lookup(name: String, clan: String?, bypassCache: Boolean = false): LookupResult {
         val cleanName = cleanOcrName(name)
         // A clan reading that is really a number (tower HP, level badge) is worse than no clan.
-        val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }?.takeIf { isPlausibleText(it) }
+        val cleanClan = clan?.let(::cleanOcrName)?.ifBlank { null }
+            ?.takeIf { isPlausibleText(it) && !com.macle.royaleassist.ocr.ClanText.isNoClanPlaceholder(it) }
         val key = CachePolicy.queryKey(cleanName, cleanClan)
         val ctx = Ctx(
             cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
@@ -408,6 +423,30 @@ class LookupChain(
         const val STRONG_CLAN_SIM = 0.75
         const val MIN_NAME_SIM = 0.72
         const val MAX_CLAN_PAGES = 6
+        /** A clan tag written in the clan slot, e.g. "Klan: #GORGQPCJ" or "Clan #GVGVVGUO". */
+        private val CLAN_TAG_RE = Regex("#\\s*([0289PYLQGRJCUVO]{6,10})\\b", RegexOption.IGNORE_CASE)
+
+        /**
+         * Search variants for names with symbols or mixed scripts: symbols replaced by spaces, and
+         * a space inserted between Latin and CJK/Hangul/kana runs ("Zodiac™是传奇" -> "Zodiac 是传奇").
+         */
+        fun symbolVariants(name: String): List<String> {
+            val base = name.trim()
+            val spaced = base.map { if (it.isLetterOrDigit() || it.isWhitespace()) it else ' ' }.joinToString("")
+                .replace(Regex("\\s+"), " ").trim()
+            val sb = StringBuilder()
+            for (ch in spaced) {
+                if (sb.isNotEmpty() && sb.last() != ' ' && ch != ' ' && isLatin(sb.last()) != isLatin(ch) &&
+                    (sb.last().isLetter() && ch.isLetter())
+                ) sb.append(' ')
+                sb.append(ch)
+            }
+            val split = sb.toString()
+            return listOf(spaced, split).filter { it != base && isPlausibleText(it) }.distinct()
+        }
+
+        private fun isLatin(c: Char) = Character.UnicodeScript.of(c.code) == Character.UnicodeScript.LATIN
+
         private val TAG_RE = Regex("#[0289PYLQGRJCUV]{3,14}", RegexOption.IGNORE_CASE)
 
         /**
@@ -417,13 +456,21 @@ class LookupChain(
          */
         fun progressivePrefixes(name: String): List<String> {
             val s = StringSim.searchable(name)
-            val latin = s.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.LATIN } * 2 >= s.length
+            // Mixed names count as non-Latin as soon as they contain CJK/Hangul/kana.
+            val latin = s.none { isCjkLike(it) } &&
+                s.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.LATIN } * 2 >= s.length
             val lengths = when {
                 !latin && s.length >= 4 -> listOf(8, 5, 3)
                 latin && s.length > 10 -> listOf(10, 7, 5)
                 else -> emptyList()
             }
             return lengths.filter { it < s.length }.map { s.take(it) }.filter { isPlausibleText(it) }.distinct()
+        }
+
+        private fun isCjkLike(c: Char) = when (Character.UnicodeScript.of(c.code)) {
+            Character.UnicodeScript.HAN, Character.UnicodeScript.HANGUL, Character.UnicodeScript.HIRAGANA,
+            Character.UnicodeScript.KATAKANA -> true
+            else -> false
         }
 
         /** At least two letters and not mostly digits ("4858", "E4858", "的4858-" are rejected). */
