@@ -28,11 +28,34 @@ data class PlayerStats(
     val threeCrownWins: Int? = null,
     val battleCount: Int? = null,
     val arena: String? = null,
+    /** Ranked league of the current season ("League 5" -> 5), from the royaleapi.com profile. */
+    val league: Int? = null,
     val deck: List<String> = emptyList(),
     /** Extra label/value pairs scraped from the RoyaleAPI profile page. */
     val extra: List<Pair<String, String>> = emptyList(),
     val source: String,
 )
+
+/**
+ * What the screen showed besides the name. The clan is a tri-state: a clan name, "No Clan"
+ * ([noClan], the placeholder was on screen), or unknown (neither). [league] is the ranked league
+ * ("League 5") and [trophies] the trophy count some screens show instead.
+ */
+@Serializable
+data class ScreenHint(
+    val clan: String? = null,
+    val noClan: Boolean = false,
+    val league: Int? = null,
+    val trophies: Int? = null,
+    /** The name probably has emoji/symbols OCR did not read (text starts far right of the clan). */
+    val decorated: Boolean = false,
+) {
+    fun describe() = listOfNotNull(
+        clan?.let { "clan '$it'" } ?: if (noClan) "no clan" else "clan unknown",
+        league?.let { "League $it" },
+        trophies?.let { "$it trophies" },
+    ).joinToString(", ")
+}
 
 data class LookupResult(
     val query: String,
@@ -52,6 +75,10 @@ data class LookupResult(
     val recentDecks: List<RecentDeck> = emptyList(),
     /** Why [lastBattle] is missing although it was requested. */
     val lastBattleError: String? = null,
+    /** The screen information the lookup used (for Refresh and the pinned card). */
+    val hint: ScreenHint = ScreenHint(),
+    /** Extra explanation for the card, e.g. why the match is only a best guess. */
+    val note: String? = null,
     /** Served from the local cache; [fetchedAt] is when the data was fetched (epoch ms). */
     val cached: Boolean = false,
     val fetchedAt: Long? = null,

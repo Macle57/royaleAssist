@@ -462,6 +462,13 @@ class OverlayService : Service() {
 
     private fun onBubbleTap() {
         if (job?.isActive == true) return
+        if (app.ownScreensResumed > 0) {
+            // Our own setup/history screen is in front: reading it would "find" players named
+            // "Overlay" or "Permissions".
+            L.i("service: own screen in front, not scanning")
+            showPanel(PanelState.NotFound("Open the game first: royaleAssist is on screen."))
+            return
+        }
         if (regionRoot != null) removeRegionWindow()
         if (!capturer.isActive) {
             L.i("service: no projection, asking for consent")
@@ -543,7 +550,7 @@ class OverlayService : Service() {
         job = scope.launch {
             busy.value = true
             try {
-                val r = app.lookup.refresh(tag)
+                val r = cur.result?.let { app.lookup.refresh(it) } ?: app.lookup.refresh(tag)
                 showPanel(
                     if (r.stats != null) PanelState.Result(cur.lines, cur.pick, r)
                     else PanelState.NotFound(r.error ?: "Refresh failed", cur.lines, cur.pick),

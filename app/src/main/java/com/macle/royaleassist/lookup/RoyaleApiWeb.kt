@@ -35,6 +35,21 @@ object RoyaleApiWeb {
 
     fun clanUrl(tag: String) = "$BASE/clan/${tagNoHash(tag)}"
 
+    /** A clan card on the clan search page. */
+    data class ClanCard(val tag: String, val name: String, val members: Int?, val trophies: Int?)
+
+    /** Clan search cards with member and trophy counts ("22 / 50 Members", "90,320 Trophies"). */
+    fun parseClanCards(html: String): List<ClanCard> =
+        Jsoup.parse(html, BASE).select("div.card.clanresult[data-clantag]").mapNotNull { card ->
+            val tag = card.attr("data-clantag").trim().uppercase()
+            val name = card.selectFirst("a.header[href^=/clan/]")?.text()?.trim()
+            if (tag.isEmpty() || name.isNullOrEmpty()) return@mapNotNull null
+            val text = card.text()
+            val members = Regex("(\\d+)\\s*/\\s*50\\s*Members").find(text)?.groupValues?.get(1)?.toIntOrNull()
+            val trophies = Regex("([0-9][0-9,]*)\\s*Trophies").find(text)?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull()
+            ClanCard(tag, name, members, trophies)
+        }
+
     /** (clanTag, clanName) pairs from the clan search page, in page order. */
     fun parseClanSearch(html: String): List<Pair<String, String>> =
         Jsoup.parse(html, BASE).select("div.card.clanresult[data-clantag]").mapNotNull { card ->
@@ -86,6 +101,16 @@ object RoyaleApiWeb {
             ?.lastOrNull { it.hasClass("item") && !it.hasClass("clan_badge") && !it.hasClass("header") }
             ?.text()?.trim()?.ifEmpty { null }
 
+        // Ranked: <h5>Current Season</h5> rows, then "League" -> "League 4".
+        var section = ""
+        var rankedLeague: Int? = null
+        for (el in doc.select("h5.ui.sub.header, tr")) {
+            if (el.tagName() == "h5") { section = el.text(); continue }
+            val tds = el.select("> td")
+            if (tds.size == 2 && tds[0].text().trim() == "League" && section.contains("Current Season", ignoreCase = true)) {
+                rankedLeague = Regex("\\d+").find(tds[1].text())?.value?.toIntOrNull()
+            }
+        }
         val rows = linkedMapOf<String, String>()
         for (tr in doc.select("tr")) {
             val tds = tr.select("> td")
@@ -113,6 +138,7 @@ object RoyaleApiWeb {
             bestTrophies = nums.getOrNull(1),
             battleCount = intOf("Total games"),
             arena = arena,
+            league = rankedLeague,
             extra = interesting.mapNotNull { k -> rows[k]?.let { k to it } },
             source = "royaleapi.com profile",
         )

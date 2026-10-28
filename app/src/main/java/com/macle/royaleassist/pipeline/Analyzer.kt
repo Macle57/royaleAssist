@@ -45,7 +45,7 @@ private fun OcrOutcome.offset(dx: Int, dy: Int): OcrOutcome {
     fun m(l: OcrLine) = map.getOrPut(l) { l.copy(box = l.box.offset(dx, dy)) }
     return copy(
         lines = lines.map(::m),
-        pick = NamePick(pick.name?.let(::m), pick.clan?.let(::m), pick.reason),
+        pick = pick.copy(name = pick.name?.let(::m), clan = pick.clan?.let(::m)),
         raw = raw.mapValues { (_, v) -> v.map { it.copy(box = it.box.offset(dx, dy)) } },
     )
 }
@@ -157,7 +157,7 @@ class Analyzer(
         val newClan = o.pick.clan?.let { reread(src, it, preferKorean = hangul, notes) }
         if (newName === name && newClan === o.pick.clan) return o.copy(refinements = o.refinements + notes)
         val lines = o.lines.map { l -> if (l === name) newName else if (l === o.pick.clan) newClan!! else l }
-        return o.copy(lines = lines, pick = NamePick(newName, newClan, o.pick.reason), refinements = o.refinements + notes)
+        return o.copy(lines = lines, pick = o.pick.copy(name = newName, clan = newClan), refinements = o.refinements + notes)
     }
 
     private suspend fun reread(src: Bitmap, line: OcrLine, preferKorean: Boolean, notes: MutableList<String>, alignLeft: Int? = null): OcrLine {
@@ -235,7 +235,7 @@ class Analyzer(
                     if (best != null && acceptTesseract(best, mlKitConfidence = 0f)) {
                         val tLine = OcrLine(best.text, above, best.confidence / 100f, "tesseract-${best.lang}")
                         lines = (lines + tLine).sortedBy { it.box.top }
-                        pick = NamePick(tLine, name, "Tesseract read a name above the only line")
+                        pick = pick.copy(name = tLine, clan = name, reason = "Tesseract read a name above the only line")
                         tessUsed = true
                         L.i("analyze: tesseract found name '${best.text}' above '${name.text}'")
                     }
@@ -246,7 +246,7 @@ class Analyzer(
                 if (best != null && acceptTesseract(best, name.confidence)) {
                     val tLine = OcrLine(best.text, name.box, best.confidence / 100f, "tesseract-${best.lang}")
                     lines = lines + tLine
-                    pick = NamePick(tLine, pick.clan, "Tesseract replaced a weak reading")
+                    pick = pick.copy(name = tLine, reason = "Tesseract replaced a weak reading")
                     tessUsed = true
                     L.i("analyze: tesseract replaced name '${name.text}' -> '${best.text}'")
                 }
@@ -258,11 +258,11 @@ class Analyzer(
     suspend fun analyze(src: Bitmap, exclude: Box? = null): Analysis {
         val o = ocrAndPick(src, exclude)
         val name = o.pick.name ?: return Analysis(o, null)
-        return Analysis(o, lookup.lookup(name.text, o.pick.clan?.text))
+        return Analysis(o, lookup.lookup(name.text, o.pick.hint()))
     }
 
     suspend fun lookupPick(pick: NamePick): LookupResult? =
-        pick.name?.let { lookup.lookup(it.text, pick.clan?.text) }
+        pick.name?.let { lookup.lookup(it.text, pick.hint()) }
 
     companion object {
         /** "7あぎったん。" -> "あぎったん": a lone leading digit/symbol stuck to CJK/kana text and trailing 。. */

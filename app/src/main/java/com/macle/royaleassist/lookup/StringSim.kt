@@ -94,6 +94,22 @@ object StringSim {
     }
 
     /**
+     * Clan similarity: 1.0 only for normalised equality; a clan that is a prefix or part of the
+     * other ("tehran" vs "Tehran021") is at most 0.6, otherwise the usual similarity capped at
+     * 0.94, so only an exact clan can make a strong match on its own.
+     */
+    fun clanSimilarity(a: String?, b: String?): Double {
+        if (a == null || b == null) return 0.0
+        val na = compact(a)
+        val nb = compact(b)
+        if (na.isEmpty() || nb.isEmpty()) return if (a.trim() == b.trim() && a.isNotBlank()) 1.0 else 0.0
+        if (na == nb) return 1.0
+        val s = similarity(a, b)
+        if (na.contains(nb) || nb.contains(na)) return minOf(s, 0.6)
+        return minOf(s, 0.94)
+    }
+
+    /**
      * Similarity in [0,1] of two raw strings after normalisation (mean of Jaro-Winkler and
      * Levenshtein over [compact] forms, i.e. ignoring spaces and decorations; Hangul by jamo).
      */

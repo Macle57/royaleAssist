@@ -4,7 +4,21 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** The chosen name and clan lines, plus a short human-readable reason (logged and saved with scans). */
-data class NamePick(val name: OcrLine?, val clan: OcrLine?, val reason: String = "")
+data class NamePick(
+    val name: OcrLine?,
+    val clan: OcrLine?,
+    val reason: String = "",
+    /** The clan slot showed "No Clan" (or a translation): the player has no clan. */
+    val noClan: Boolean = false,
+    /** "League 5" under the clan. */
+    val league: Int? = null,
+    /** Trophy count under the clan (some screens show it instead of the league). */
+    val trophies: Int? = null,
+    /** Emoji or symbols around the name that OCR skipped (see [NamePicker.isDecorated]). */
+    val decorated: Boolean = false,
+) {
+    fun hint() = com.macle.royaleassist.lookup.ScreenHint(clan?.text, noClan && clan == null, league, trophies, decorated)
+}
 
 /**
  * Picks the opponent's name and clan among OCR lines.
@@ -100,19 +114,55 @@ object NamePicker {
             why = "tallest line (no name-coloured line)"
         }
         // The clan slot may hold "No Clan" (and translations): then the player has no clan.
-        val clan = clanFor(name, clanCandidates(lines, exclude) + placeholders)?.takeUnless { ClanText.isNoClanPlaceholder(it.text) }
-        return NamePick(name, clan, why + if (rejected.isNotEmpty()) "; rejected $rejected" else "")
+        val slot = clanFor(name, clanCandidates(lines, exclude) + placeholders)
+        val noClan = slot != null && ClanText.isNoClanPlaceholder(slot.text)
+        val clan = slot?.takeUnless { noClan }
+        val (league, trophies) = rankInfo(name, lines)
+        val decorated = isDecorated(name, slot)
+        return NamePick(
+            name, clan, why + (if (decorated) "; text starts right of the clan (emoji?)" else "") +
+                if (rejected.isNotEmpty()) "; rejected $rejected" else "",
+            noClan, league, trophies, decorated,
+        )
     }
 
     private fun effectiveHeight(l: OcrLine) = if (isLatin(l)) l.box.height.toDouble() else l.box.height * 0.8
 
     /** Re-pick with a user-chosen name line (tap in the panel). */
-    fun pickWithName(name: OcrLine, lines: List<OcrLine>): NamePick = NamePick(
-        name,
-        clanFor(name, candidates(lines) + lines.filter { ClanText.isNoClanPlaceholder(it.text) })
-            ?.takeUnless { ClanText.isNoClanPlaceholder(it.text) },
-        "chosen by the user",
-    )
+    fun pickWithName(name: OcrLine, lines: List<OcrLine>): NamePick {
+        val slot = clanFor(name, clanCandidates(lines, null) + lines.filter { ClanText.isNoClanPlaceholder(it.text) })
+        val noClan = slot != null && ClanText.isNoClanPlaceholder(slot.text)
+        val (league, trophies) = rankInfo(name, lines)
+        return NamePick(name, slot?.takeUnless { noClan }, "chosen by the user", noClan, league, trophies)
+    }
+
+    /**
+     * "League N" and the trophy count shown under the clan (left-aligned with the name, within a
+     * few line heights). Tower HP and timers elsewhere on screen are not aligned and are ignored.
+     */
+    fun rankInfo(name: OcrLine, lines: List<OcrLine>): Pair<Int?, Int?> {
+        val nb = name.box
+        val h = nb.height.coerceAtLeast(1)
+        val below = lines.filter { it !== name && it.box.top >= nb.centerY && it.box.top - nb.bottom < 4 * h }
+        val league = below.firstOrNull { isLeagueLabel(it.text) }
+            ?.let { Regex("\\d+").findAll(it.text).lastOrNull()?.value?.toIntOrNull() }
+        val trophies = below
+            .filter { abs(it.box.left - nb.left) < 2.5 * h && isMostlyDigits(it.text) }
+            .mapNotNull { l -> l.text.filter { it.isDigit() }.takeIf { it.length in 1..5 && l.text.count { c -> c.isLetter() } <= 1 }?.toIntOrNull() }
+            .firstOrNull()
+        return league to trophies
+    }
+
+    /**
+     * Name and clan text start at the same x after the badge. A name that starts much further
+     * right had something OCR skipped before it, usually an emoji ("⚽JP⚽" read as "JP").
+     */
+    fun isDecorated(name: OcrLine, clanSlot: OcrLine?): Boolean {
+        val c = clanSlot ?: return false
+        return name.box.left - c.box.left > name.box.height * 0.8
+    }
+
+    fun isLeagueLabel(text: String) = LABELS[0].matches(text.trim())
 
     fun clanFor(name: OcrLine, lines: List<OcrLine>): OcrLine? {
         val nb = name.box

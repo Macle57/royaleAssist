@@ -151,7 +151,7 @@ private fun HistoryScreen(app: RoyaleAssistApp, onBack: () -> Unit) {
                 onVerify = { context.startActivity(com.macle.royaleassist.lookup.VerifyActivity.intent(context, r.stats?.name)) },
                 alpha = 1f,
                 deckOnly = r.lastBattle != null, // pinned: deck (with levels) above the stats
-                onRefresh = { tag -> scope.launch { detail = app.lookup.refresh(tag) } },
+                onRefresh = { _ -> scope.launch { detail = app.lookup.refresh(r) } },
                 onOpenWeb = { tag -> HistoryActivity.openOnRoyaleApi(context, tag) },
                 showCloseHint = false,
             )

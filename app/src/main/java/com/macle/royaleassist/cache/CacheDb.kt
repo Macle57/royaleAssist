@@ -43,6 +43,8 @@ data class QueryEntity(
     @PrimaryKey val key: String,
     val tag: String,
     val createdAt: Long,
+    /** [CachePolicy.MATCHER_VERSION] that made this decision (schema 3). */
+    val matcher: Int = 0,
 )
 
 /** Parsed search result rows (JSON list of PlayerHit) keyed by request URL. */
@@ -92,7 +94,7 @@ interface CacheDao {
     suspend fun clearSearches()
 }
 
-@Database(entities = [PlayerEntity::class, QueryEntity::class, SearchEntity::class], version = 2, exportSchema = false)
+@Database(entities = [PlayerEntity::class, QueryEntity::class, SearchEntity::class], version = 3, exportSchema = false)
 abstract class CacheDb : RoomDatabase() {
     abstract fun dao(): CacheDao
 
@@ -104,9 +106,16 @@ abstract class CacheDb : RoomDatabase() {
             }
         }
 
+        /** Schema 3: matcher version on query decisions (old ones then count as expired). */
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE queries ADD COLUMN matcher INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun create(context: Context): CacheDb =
             Room.databaseBuilder(context, CacheDb::class.java, "lookup-cache.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration(true)
                 .build()
     }

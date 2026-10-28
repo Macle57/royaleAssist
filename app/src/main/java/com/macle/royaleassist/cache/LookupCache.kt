@@ -30,6 +30,7 @@ class LookupCache(private val dao: CacheDao) {
 
     suspend fun byQuery(key: String): Cached? {
         val q = dao.query(key) ?: return null
+        if (q.matcher != CachePolicy.MATCHER_VERSION) return null
         return byTag(q.tag)
     }
 
@@ -69,11 +70,11 @@ class LookupCache(private val dao: CacheDao) {
                 seenCount = (old?.seenCount ?: 0) + 1,
             )
         )
-        if (queryKey != null) dao.upsertQuery(QueryEntity(queryKey, tag, now))
+        if (queryKey != null) dao.upsertQuery(QueryEntity(queryKey, tag, now, CachePolicy.MATCHER_VERSION))
     }
 
     suspend fun putQuery(key: String, tag: String, now: Long) {
-        dao.upsertQuery(QueryEntity(key, tag, now))
+        dao.upsertQuery(QueryEntity(key, tag, now, CachePolicy.MATCHER_VERSION))
     }
 
     /** Records another sighting of a cached player (cache hit). */

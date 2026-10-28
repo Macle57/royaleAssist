@@ -105,6 +105,8 @@ private fun SetupScreen(app: RoyaleAssistApp) {
     var clanQuery by remember { mutableStateOf("Kings & Queens") }
     var lookupBusy by remember { mutableStateOf(false) }
     var lookupResult by remember { mutableStateOf<LookupResult?>(null) }
+    var noClanQuery by remember { mutableStateOf(false) }
+    var leagueQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { canOverlay = Settings.canDrawOverlays(context) }
@@ -304,11 +306,23 @@ private fun SetupScreen(app: RoyaleAssistApp) {
             RoyalField(value = query, onChange = { query = it }, label = "Player name or #tag")
             Spacer(Modifier.height(6.dp))
             RoyalField(value = clanQuery, onChange = { clanQuery = it }, label = "Clan name (optional)")
+            SwitchRow(
+                title = "No clan",
+                body = "The opponent's clan slot showed \"No Clan\". Clan name above is ignored.",
+                checked = noClanQuery,
+            ) { noClanQuery = it }
+            Spacer(Modifier.height(6.dp))
+            RoyalField(value = leagueQuery, onChange = { leagueQuery = it.filter(Char::isDigit) }, label = "League shown on screen (optional)")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Pill(if (lookupBusy) "Looking up..." else "Look up", primary = true) {
                     if (!lookupBusy) scope.launch {
                         lookupBusy = true
-                        lookupResult = app.lookup.lookup(query, clanQuery.ifBlank { null })
+                        val hint = com.macle.royaleassist.lookup.ScreenHint(
+                            clan = clanQuery.ifBlank { null }.takeUnless { noClanQuery },
+                            noClan = noClanQuery,
+                            league = leagueQuery.toIntOrNull(),
+                        )
+                        lookupResult = app.lookup.lookup(query, hint)
                         lookupBusy = false
                     }
                 }
@@ -500,6 +514,19 @@ private fun ResultCard(r: LookupResult) {
         if (s != null) {
             Text(s.name, style = MaterialTheme.typography.headlineSmall, color = Royal.Elixir)
             Text("#${s.tag}", style = MaterialTheme.typography.titleMedium, color = Royal.Gold)
+            Text(
+                (if (r.strongMatch) "Match" else "Best guess") + " (${(r.confidence * 100).toInt()}%) for ${r.hint.describe()}" +
+                    (r.note?.let { ". $it" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (r.strongMatch) Royal.Mist else Royal.Gold,
+            )
+            if (r.alternatives.isNotEmpty()) {
+                Text(
+                    "Other candidates: " + r.alternatives.joinToString { "${it.name} #${it.tag} (${it.clanName ?: "no clan"})" },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Royal.Mist,
+                )
+            }
             s.clanName?.let { Text(it + (s.clanTag?.let { t -> "  #$t" } ?: ""), style = MaterialTheme.typography.bodyMedium) }
             if (r.recentDecks.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))

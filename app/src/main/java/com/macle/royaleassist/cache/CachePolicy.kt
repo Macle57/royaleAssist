@@ -28,11 +28,24 @@ object CachePolicy {
      * Key for an OCR'd (name, clan) pair: cleaned, case/decoration-insensitive. Readings that
      * differ only by OCR noise such as case, a trailing star or "™" map to the same key.
      */
-    fun queryKey(name: String, clan: String?): String {
+    fun queryKey(name: String, clan: String?, noClan: Boolean = false): String {
         val n = StringSim.normalize(LookupChain.cleanOcrName(name)).ifEmpty { name.trim() }
-        val c = clan?.let { StringSim.normalize(LookupChain.cleanOcrName(it)) }.orEmpty()
+        val c = when {
+            clan != null -> StringSim.normalize(LookupChain.cleanOcrName(clan))
+            noClan -> NO_CLAN_KEY
+            else -> ""
+        }
         return "$n|$c"
     }
+
+    /** Clan part of the query key when the screen showed "No Clan" (cannot collide with a real clan). */
+    const val NO_CLAN_KEY = "<no clan>"
+
+    /**
+     * Version of the matching rules that produced a cached name -> player decision. Entries from
+     * older rules are ignored (v2: clan tri-state, case-insensitive candidates, league tie-break).
+     */
+    const val MATCHER_VERSION = 2
 
     /** "just now", "3 min ago", "2 h ago", "4 d ago". */
     fun age(fetchedAt: Long, now: Long): String {

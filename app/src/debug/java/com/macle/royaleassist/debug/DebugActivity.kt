@@ -60,8 +60,13 @@ class DebugActivity : Activity() {
         app.appScope.launch {
             app.ocr.ensureModels(applicationContext)
             if (name != null) {
-                val r = app.lookup.lookup(name, clan)
-                emit("RESULT lookup name='$name' clan='${clan ?: ""}' ${describe(r)}")
+                // --ez noclan true: the screen showed "No Clan"; --ei league N / --ei trophies N: rank line.
+                val hint = com.macle.royaleassist.lookup.ScreenHint(
+                    clan, intent.getBooleanExtra("noclan", false),
+                    intent.getIntExtra("league", -1).takeIf { it >= 0 }, intent.getIntExtra("trophies", -1).takeIf { it >= 0 },
+                )
+                val r = app.lookup.lookup(name, hint, bypassCache = intent.getBooleanExtra("fresh", false))
+                emit("RESULT lookup name='$name' ${hint.describe()} ${describe(r)}")
                 return@launch
             }
             // --es region x0,y0,x1,y1 (fractions) overrides the saved scan region.
@@ -92,12 +97,12 @@ class DebugActivity : Activity() {
                     "ocr" -> emitOcr(label, app.analyzer.scan(bmp, region, fullScreenFallback = fallback), null)
                     "fullscreen" -> {
                         val o = app.analyzer.ocrAndPick(bmp)
-                        emitOcr(label, o, o.pick.name?.let { app.lookup.lookup(it.text, o.pick.clan?.text) })
+                        emitOcr(label, o, o.pick.name?.let { app.lookup.lookup(it.text, o.pick.hint()) })
                     }
                     else -> {
                         // Same path as the bubble: region crop (small images count as the region).
                         val o = app.analyzer.scan(bmp, region, fullScreenFallback = fallback)
-                        val r = o.pick.name?.let { app.lookup.lookup(it.text, o.pick.clan?.text) }
+                        val r = o.pick.name?.let { app.lookup.lookup(it.text, o.pick.hint()) }
                         emitOcr(label, o, r)
                     }
                 }
@@ -158,7 +163,7 @@ class DebugActivity : Activity() {
         }
         emit(
             "RESULT sample=$label name='${o.pick.name?.text ?: ""}' clan='${o.pick.clan?.text ?: ""}' " +
-                "nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} mode=${o.mode} grown=${o.expanded} box=${o.scanned} ocrMs=${o.millis} why='${o.pick.reason}'" +
+                "hint=[${o.pick.hint().describe()}] nameSrc=${o.pick.name?.source} tess=${o.tesseractUsed} mode=${o.mode} grown=${o.expanded} box=${o.scanned} ocrMs=${o.millis} why='${o.pick.reason}'" +
                 (r?.let { " " + describe(it) } ?: "")
         )
         emit("LINES sample=$label $lines")
@@ -171,7 +176,7 @@ class DebugActivity : Activity() {
     private fun describe(r: LookupResult): String {
         val h = r.hit
         val s = r.stats
-        return "lookup=${r.strategy ?: "none"} found='${h?.name ?: ""}' tag=${h?.tag?.let { "#$it" } ?: ""} " +
+        return "note='${r.note ?: ""}' alts=[${r.alternatives.joinToString { it.name + " #" + it.tag + " (" + (it.clanName ?: "no clan") + ")" }}] lookup=${r.strategy ?: "none"} found='${h?.name ?: ""}' tag=${h?.tag?.let { "#$it" } ?: ""} " +
             "foundClan='${h?.clanName ?: ""}' conf=${"%.2f".format(r.confidence)} strong=${r.strongMatch} cfBlocked=${r.needsVerification} " +
             "trophies=${s?.trophies} level=${s?.expLevel} statsSrc='${s?.source ?: ""}' err='${r.error ?: ""}' " +
             "log=[${r.log.joinToString(" ; ")}]"

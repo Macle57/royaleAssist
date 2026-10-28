@@ -363,7 +363,8 @@ private fun matchNote(r: LookupResult): String {
         else -> r.strategy
     }
     val pct = (r.confidence * 100).toInt()
-    return if (r.strongMatch) "$pct% match via $how" else "Best guess, $pct% match via $how; name or clan differ"
+    val base = if (r.strongMatch) "$pct% match via $how" else "Best guess, $pct% match via $how; name or clan differ"
+    return r.note?.let { "$base. $it" } ?: base
 }
 
 @Composable

@@ -28,9 +28,23 @@ class RoyaleAssistApp : Application() {
     val analyzer by lazy { Analyzer(ocr, tesseract, lookup) }
     val recorder by lazy { ScanRecorder(this) }
 
+    /** Number of our own (non-debug) activities currently resumed. */
+    @Volatile var ownScreensResumed = 0
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            private fun counts(a: android.app.Activity) = !a.javaClass.name.contains(".debug.")
+            override fun onActivityResumed(a: android.app.Activity) { if (counts(a)) ownScreensResumed++ }
+            override fun onActivityPaused(a: android.app.Activity) { if (counts(a)) ownScreensResumed = (ownScreensResumed - 1).coerceAtLeast(0) }
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+            override fun onActivityStarted(a: android.app.Activity) {}
+            override fun onActivityStopped(a: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) {}
+        })
         L.init(recorder.logsDir)
     }
 

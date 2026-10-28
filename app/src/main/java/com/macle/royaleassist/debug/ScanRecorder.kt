@@ -114,6 +114,9 @@ class ScanRecorder(private val context: Context) {
                 put("name", ocr.pick.name?.text)
                 put("clan", ocr.pick.clan?.text)
                 put("reason", ocr.pick.reason)
+                put("noClan", ocr.pick.noClan)
+                put("league", ocr.pick.league)
+                put("trophies", ocr.pick.trophies)
             }
         }
         if (r != null) {
@@ -125,6 +128,8 @@ class ScanRecorder(private val context: Context) {
                 put("strongMatch", r.strongMatch)
                 put("cached", r.cached)
                 put("error", r.error)
+                put("note", r.note)
+                put("hint", r.hint.describe())
                 put("found", r.hit?.let { "${it.name} #${it.tag} (${it.clanName ?: "no clan"})" })
                 put("trophies", r.stats?.trophies)
                 put("statsSource", r.stats?.source)
