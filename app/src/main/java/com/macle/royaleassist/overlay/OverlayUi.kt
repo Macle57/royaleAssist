@@ -299,6 +299,7 @@ private fun matchNote(r: LookupResult): String {
         r.strategy == null -> ""
         r.strategy.startsWith("L1") -> "exact name search"
         r.strategy.startsWith("L2v") -> "search with OCR fixes"
+        r.strategy.startsWith("L2p") -> "name prefix search"
         r.strategy.startsWith("L2c") -> "clan member list"
         r.strategy.startsWith("L2") -> "fuzzy name search"
         r.strategy.startsWith("L3") -> "official API clan list"

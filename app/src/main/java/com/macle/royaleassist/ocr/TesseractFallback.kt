@@ -84,6 +84,27 @@ class TesseractFallback(private val context: Context) {
         }
     }
 
+    /**
+     * Reads one line crop with a single [lang] whose traineddata is already in the tessdata dir
+     * (used by the debug harness to try models that are not bundled, e.g. kor).
+     */
+    suspend fun readWith(crop: Bitmap, lang: String): List<Result> = withContext(Dispatchers.Default) {
+        mutex.withLock {
+            dataPath()
+            val api = api(lang) ?: return@withLock emptyList()
+            val scale = (96f / crop.height).coerceIn(1f, 6f)
+            val (up, _) = Preprocess.apply(crop, Prep.UPSCALE_GRAY, forcedScale = scale)
+            listOf("gray" to up, "bin150" to Preprocess.binarize(up, 150, false), "bin190" to Preprocess.binarize(up, 190, false))
+                .mapNotNull { (v, bmp) ->
+                    api.setImage(bmp)
+                    val text = api.utF8Text.orEmpty().replace('\n', ' ').trim()
+                    val conf = api.meanConfidence()
+                    api.clear()
+                    if (text.isEmpty()) null else Result(text, conf, lang, v)
+                }
+        }
+    }
+
     companion object {
         val LANGS = listOf("ara", "rus")
 

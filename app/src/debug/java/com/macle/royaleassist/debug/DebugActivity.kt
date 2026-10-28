@@ -74,6 +74,13 @@ class DebugActivity : Activity() {
             for ((label, bmp) in inputs) {
                 when (mode) {
                     "variants" -> runVariants(label, bmp)
+                    "tessbox" -> {
+                        // --es box l,t,r,b (pixels) --es lang kor
+                        val b = intent.getStringExtra("box")!!.split(',').map { it.trim().toInt() }
+                        val crop = Bitmap.createBitmap(bmp, b[0], b[1], b[2] - b[0], b[3] - b[1])
+                        val lang = intent.getStringExtra("lang") ?: "kor"
+                        app.tesseract.readWith(crop, lang).forEach { emit("TESSBOX $label $lang: '${it.text}' conf=${it.confidence} ${it.variant}") }
+                    }
                     "bench" -> runBench(label, bmp, region)
                     "ocr" -> emitOcr(label, app.analyzer.scan(bmp, region, fullScreenFallback = fallback), null)
                     "fullscreen" -> {
@@ -148,6 +155,10 @@ class DebugActivity : Activity() {
                 (r?.let { " " + describe(it) } ?: "")
         )
         emit("LINES sample=$label $lines")
+        o.refinements.forEach { emit("REFINE sample=$label $it") }
+        o.raw.forEach { (src, ls) ->
+            emit("RAWREC sample=$label $src: " + ls.joinToString(" | ") { "'${it.text}' c=${"%.2f".format(it.confidence)} y=${it.box.top}" })
+        }
     }
 
     private fun describe(r: LookupResult): String {

@@ -106,6 +106,10 @@ class ScanRecorder(private val context: Context) {
             ocr.firstScanned?.let { put("firstScannedBox", boxJson(it)) }
             put("tesseractUsed", ocr.tesseractUsed)
             putJsonArray("lines") { ocr.lines.forEach { add(lineJson(it)) } }
+            putJsonObject("rawByRecognizer") {
+                ocr.raw.forEach { (src, ls) -> put(src, buildJsonArray { ls.forEach { add(lineJson(it)) } }) }
+            }
+            put("secondPass", buildJsonArray { ocr.refinements.forEach { add(it) } })
             putJsonObject("pick") {
                 put("name", ocr.pick.name?.text)
                 put("clan", ocr.pick.clan?.text)

@@ -7,19 +7,30 @@ import kotlin.math.min
 /** Fuzzy string helpers tuned for comparing OCR output with real player/clan names. */
 object StringSim {
     /**
-     * Lowercase, NFKC, drop decorations (stars, quotes, trademark signs, punctuation) and fold
-     * characters OCR commonly confuses, so "MasterX™<" and "masterx" compare equal.
+     * CJK characters that OCR returns for look-alike Hangul jamo (a clan "ㅅㅁㅂ" was read as
+     * "人口日" by the Japanese model). Folded on both sides of a comparison, so it is symmetric.
+     */
+    private val JAMO_HOMOGLYPHS = mapOf(
+        '人' to 'ㅅ', '口' to 'ㅁ', 'ロ' to 'ㅁ', '日' to 'ㅂ', '己' to 'ㄹ', '〇' to 'ㅇ', '匚' to 'ㄷ',
+    )
+
+    /**
+     * Lowercase, drop decorations (stars, skulls, quotes, trademark signs, emoji, punctuation),
+     * fold characters OCR commonly confuses, and decompose Hangul into jamo (NFKD), so "MasterX™<"
+     * equals "masterx" and 대/태 or 나/니 differ by one jamo instead of a whole syllable.
+     * Whitespace is kept as single spaces (see [compact]).
      */
     fun normalize(s: String): String {
-        // Drop trademark-style symbols first: NFKC would expand ™ to "TM".
-        val n = Normalizer.normalize(s.replace(Regex("[™®©℠]"), ""), Normalizer.Form.NFKC).lowercase()
+        // Drop trademark-style symbols first: NFKD would expand ™ to "TM".
+        val folded = s.replace(Regex("[™®©℠]"), "").map { JAMO_HOMOGLYPHS[it] ?: it }.joinToString("")
+        val n = Normalizer.normalize(folded, Normalizer.Form.NFKD).lowercase()
         val sb = StringBuilder()
         for (ch in n) {
             val c = when (ch) {
                 '0' -> 'o'
                 '1', '|', 'i', '!' -> 'l'
                 '5' -> 's'
-                'θ', 'Θ', 'ø', 'ö', 'ó', 'ò', 'ô', 'õ' -> 'o'
+                'θ', 'Θ', 'ø' -> 'o'
                 else -> ch
             }
             if (c.isLetterOrDigit()) sb.append(c)
@@ -27,6 +38,15 @@ object StringSim {
         }
         return sb.toString().trim()
     }
+
+    /** [normalize] without spaces: OCR inserts or drops spaces, names often have none. */
+    fun compact(s: String): String = normalize(s).replace(" ", "")
+
+    /** True when the string contains Hangul (syllables or jamo). */
+    fun hasHangul(s: String) = s.any { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HANGUL }
+
+    /** Letters/digits only, original case and composed syllables (used to build search queries). */
+    fun searchable(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFC).filter { it.isLetterOrDigit() }
 
     fun jaroWinkler(a: String, b: String): Double {
         if (a == b) return if (a.isEmpty()) 0.0 else 1.0
@@ -73,11 +93,14 @@ object StringSim {
         return 1.0 - prev[b.length].toDouble() / max(a.length, b.length)
     }
 
-    /** Similarity in [0,1] of two raw strings after normalisation (mean of Jaro-Winkler and Levenshtein). */
+    /**
+     * Similarity in [0,1] of two raw strings after normalisation (mean of Jaro-Winkler and
+     * Levenshtein over [compact] forms, i.e. ignoring spaces and decorations; Hangul by jamo).
+     */
     fun similarity(a: String?, b: String?): Double {
         if (a == null || b == null) return 0.0
-        val na = normalize(a)
-        val nb = normalize(b)
+        val na = compact(a)
+        val nb = compact(b)
         if (na.isEmpty() || nb.isEmpty()) {
             // Non-letter names (rare) – compare raw.
             return if (a.trim() == b.trim()) 1.0 else 0.0

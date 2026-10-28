@@ -48,26 +48,33 @@ class OcrEngine {
         false
     }
 
+    /** Merged lines plus what each recognizer read (kept for the debug scan JSON). */
+    data class Recognized(val merged: List<OcrLine>, val raw: Map<String, List<OcrLine>>)
+
     /**
      * Runs every recognizer on [bitmap] and returns merged lines. Boxes are divided by [scale] so
      * they are in the coordinates of the image before preprocessing.
      */
-    suspend fun recognize(bitmap: Bitmap, scale: Float = 1f): List<OcrLine> = coroutineScope {
-        val image = InputImage.fromBitmap(bitmap, 0)
+    suspend fun recognize(bitmap: Bitmap, scale: Float = 1f): List<OcrLine> = recognizeDetailed(bitmap, scale).merged
+
+    suspend fun recognizeDetailed(bitmap: Bitmap, scale: Float = 1f): Recognized {
         val t0 = System.currentTimeMillis()
-        val perRecognizer = recognizers.map { (source, client) ->
+        val raw = recognizeRaw(bitmap, scale)
+        val all = raw.values.flatten()
+        val merged = LineMerger.merge(all)
+        L.i("ocr: ${all.size} raw lines -> ${merged.size} merged in ${System.currentTimeMillis() - t0} ms (${bitmap.width}x${bitmap.height})")
+        return Recognized(merged, raw)
+    }
+
+    /** Per-recognizer output (all recognizers, or only [sources]). Failures give an empty list. */
+    suspend fun recognizeRaw(bitmap: Bitmap, scale: Float = 1f, sources: Set<String>? = null): Map<String, List<OcrLine>> = coroutineScope {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        recognizers.filter { sources == null || it.first in sources }.map { (source, client) ->
             async {
-                try {
-                    val text = client.process(image).await()
-                    text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                source to try {
+                    client.process(image).await().textBlocks.flatMap { it.lines }.mapNotNull { line ->
                         val r = line.boundingBox ?: return@mapNotNull null
-                        OcrLine(
-                            text = line.text,
-                            box = Box(r.left, r.top, r.right, r.bottom).scaled(1f / scale),
-                            confidence = line.confidence,
-                            source = source,
-                            language = line.recognizedLanguage,
-                        )
+                        OcrLine(line.text, Box(r.left, r.top, r.right, r.bottom).scaled(1f / scale), line.confidence, source, line.recognizedLanguage)
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -75,25 +82,6 @@ class OcrEngine {
                     L.w("ocr: $source recognizer failed: ${e.message}")
                     emptyList()
                 }
-            }
-        }.awaitAll()
-        val all = perRecognizer.flatten()
-        val merged = LineMerger.merge(all)
-        L.i("ocr: ${all.size} raw lines -> ${merged.size} merged in ${System.currentTimeMillis() - t0} ms (${bitmap.width}x${bitmap.height})")
-        merged
-    }
-
-    /** Raw per-recognizer output; used by the debug harness to compare recognizers. */
-    suspend fun recognizeRaw(bitmap: Bitmap, scale: Float = 1f): Map<String, List<OcrLine>> = coroutineScope {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        recognizers.map { (source, client) ->
-            async {
-                source to runCatching {
-                    client.process(image).await().textBlocks.flatMap { it.lines }.mapNotNull { line ->
-                        val r = line.boundingBox ?: return@mapNotNull null
-                        OcrLine(line.text, Box(r.left, r.top, r.right, r.bottom).scaled(1f / scale), line.confidence, source, line.recognizedLanguage)
-                    }
-                }.getOrElse { listOf(OcrLine("<error: ${it.message}>", Box(0, 0, 0, 0), 0f, source)) }
             }
         }.awaitAll().toMap()
     }

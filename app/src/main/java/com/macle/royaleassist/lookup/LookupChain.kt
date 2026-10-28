@@ -64,6 +64,24 @@ class LookupChain(
         Strategy("L2 RoyaleAPI fuzzy search", web = true) { ctx ->
             searchRows(ctx, RoyaleApiWeb.searchUrl(ctx.name, exact = false))
         },
+        Strategy("L2p RoyaleAPI prefix search", web = true) { ctx ->
+            // RoyaleAPI matches word prefixes (not substrings), and long or misread names return
+            // nothing. Shorter prefixes of the OCR reading still reach the player; candidates are
+            // then ranked by (jamo-aware) similarity and clan.
+            val prefixes = progressivePrefixes(ctx.name)
+            if (ctx.candidates.isNotEmpty() || prefixes.isEmpty()) {
+                emptyList()
+            } else {
+                val out = mutableListOf<PlayerHit>()
+                for (q in prefixes) {
+                    val rows = searchRows(ctx, RoyaleApiWeb.searchUrl(q, exact = false))
+                    ctx.log("  prefix '$q': ${rows.size} rows")
+                    out += rows
+                    if (rows.any { isStrong(score(it, ctx.name, ctx.clan), ctx.clan) }) break
+                }
+                out
+            }
+        },
         Strategy("L2v RoyaleAPI search with OCR fixes", web = true) { ctx ->
             val out = mutableListOf<PlayerHit>()
             for (v in ocrVariants(ctx.name).take(4)) {
@@ -365,6 +383,22 @@ class LookupChain(
         const val MIN_NAME_SIM = 0.72
         const val MAX_CLAN_PAGES = 6
         private val TAG_RE = Regex("#[0289PYLQGRJCUV]{3,14}", RegexOption.IGNORE_CASE)
+
+        /**
+         * Search prefixes for names RoyaleAPI did not find: Hangul/CJK and other non-Latin names
+         * 8, 5 and 3 characters; Latin names longer than 10 characters 10, 7 and 5. Spaces and
+         * decorations are dropped first (the game shows "동덕여대…황나☠", OCR may read "… 문지기…").
+         */
+        fun progressivePrefixes(name: String): List<String> {
+            val s = StringSim.searchable(name)
+            val latin = s.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.LATIN } * 2 >= s.length
+            val lengths = when {
+                !latin && s.length >= 4 -> listOf(8, 5, 3)
+                latin && s.length > 10 -> listOf(10, 7, 5)
+                else -> emptyList()
+            }
+            return lengths.filter { it < s.length }.map { s.take(it) }.filter { isPlausibleText(it) }.distinct()
+        }
 
         /** At least two letters and not mostly digits ("4858", "E4858", "的4858-" are rejected). */
         fun isPlausibleText(s: String): Boolean {

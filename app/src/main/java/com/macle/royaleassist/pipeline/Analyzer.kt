@@ -6,6 +6,7 @@ import com.macle.royaleassist.lookup.LookupChain
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.ocr.Box
 import com.macle.royaleassist.ocr.ColorStats
+import com.macle.royaleassist.lookup.StringSim
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrEngine
@@ -32,13 +33,21 @@ data class OcrOutcome(
     val expanded: Boolean = false,
     /** The region box of the first pass when [expanded]. */
     val firstScanned: Box? = null,
+    /** What each recognizer read before merging (screen coordinates). */
+    val raw: Map<String, List<OcrLine>> = emptyMap(),
+    /** Second-pass re-reads of the name/clan boxes (human-readable, for logs and scan JSON). */
+    val refinements: List<String> = emptyList(),
 )
 
 /** Moves every box by (dx, dy): crop coordinates -> screen coordinates. */
 private fun OcrOutcome.offset(dx: Int, dy: Int): OcrOutcome {
     val map = HashMap<OcrLine, OcrLine>()
     fun m(l: OcrLine) = map.getOrPut(l) { l.copy(box = l.box.offset(dx, dy)) }
-    return copy(lines = lines.map(::m), pick = NamePick(pick.name?.let(::m), pick.clan?.let(::m), pick.reason))
+    return copy(
+        lines = lines.map(::m),
+        pick = NamePick(pick.name?.let(::m), pick.clan?.let(::m), pick.reason),
+        raw = raw.mapValues { (_, v) -> v.map { it.copy(box = it.box.offset(dx, dy)) } },
+    )
 }
 
 data class Analysis(
@@ -77,6 +86,7 @@ class Analyzer(
                 if (better) o = o2.copy(expanded = true, firstScanned = box, millis = o.millis + o2.millis)
             }
         }
+        o = refine(src, o)
         o = withTesseract(src, o)
         L.i("analyze: final name='${o.pick.name?.text}' clan='${o.pick.clan?.text}' in ${System.currentTimeMillis() - t0} ms")
         if (o.pick.name != null || !fullScreenFallback) return o
@@ -88,7 +98,7 @@ class Analyzer(
     private suspend fun scanBox(src: Bitmap, box: Box, exclude: Box?): OcrOutcome {
         val crop = Bitmap.createBitmap(src, box.left, box.top, box.width, box.height)
         val inCrop = exclude?.offset(-box.left, -box.top)
-        return ocrAndPick(crop, inCrop, useTesseract = false, forcedScale = regionScale(box))
+        return ocrAndPick(crop, inCrop, useTesseract = false, forcedScale = regionScale(box), secondPass = false)
             .offset(box.left, box.top)
             .copy(mode = "region", scanned = box, crop = crop)
     }
@@ -105,15 +115,85 @@ class Analyzer(
         prep: Prep = Prep.DEFAULT,
         useTesseract: Boolean = true,
         forcedScale: Float? = null,
+        secondPass: Boolean = true,
     ): OcrOutcome {
         val t0 = System.currentTimeMillis()
         val (img, scale) = Preprocess.apply(src, prep, forcedScale)
-        val lines0 = ocr.recognize(img, scale).map { it.copy(warmth = ColorStats.warmFraction(src, it.box)) }
+        val rec = ocr.recognizeDetailed(img, scale)
+        val lines0 = rec.merged.map { it.copy(warmth = ColorStats.warmFraction(src, it.box)) }
         val pick0 = NamePicker.pick(lines0, exclude)
-        val (lines, pick, tessUsed) = if (useTesseract) applyTesseract(src, lines0, pick0) else Triple(lines0, pick0, false)
+        var o = OcrOutcome(lines0, pick0, false, 0, mode = "full-screen", crop = src, raw = rec.raw)
+        if (secondPass) o = refine(src, o)
+        if (useTesseract) o = withTesseract(src, o)
         val ms = System.currentTimeMillis() - t0
-        L.i("analyze: name='${pick.name?.text}' (${pick.name?.source}) clan='${pick.clan?.text}' lines=${lines.size} in $ms ms: ${pick.reason}")
-        return OcrOutcome(lines, pick, tessUsed, ms, mode = "full-screen", crop = src)
+        L.i("analyze: name='${o.pick.name?.text}' (${o.pick.name?.source}) clan='${o.pick.clan?.text}' lines=${o.lines.size} in $ms ms: ${o.pick.reason}")
+        return o.copy(millis = ms)
+    }
+
+    /**
+     * Second pass: re-read the picked name and clan boxes on their own, padded and upscaled 3-6x
+     * (game text is small; a 29 px line was misread). A re-read replaces the first reading when it
+     * is more confident; next to a Hangul name the Korean model's reading of the clan is preferred.
+     */
+    private suspend fun refine(src: Bitmap, o: OcrOutcome): OcrOutcome {
+        val name = o.pick.name ?: return o
+        val notes = mutableListOf<String>()
+        val newName = reread(src, name, preferKorean = false, notes)
+        val hangul = StringSim.hasHangul(newName.text)
+        val newClan = o.pick.clan?.let { reread(src, it, preferKorean = hangul, notes) }
+        if (newName === name && newClan === o.pick.clan) return o.copy(refinements = o.refinements + notes)
+        val lines = o.lines.map { l -> if (l === name) newName else if (l === o.pick.clan) newClan!! else l }
+        return o.copy(lines = lines, pick = NamePick(newName, newClan, o.pick.reason), refinements = o.refinements + notes)
+    }
+
+    private suspend fun reread(src: Bitmap, line: OcrLine, preferKorean: Boolean, notes: MutableList<String>): OcrLine {
+        val b = line.box
+        val h = b.height.coerceAtLeast(1)
+        val padded = Box(
+            (b.left - (h * 0.3).toInt()).coerceAtLeast(0), (b.top - (h * 0.45).toInt()).coerceAtLeast(0),
+            (b.right + (h * 0.3).toInt()).coerceAtMost(src.width), (b.bottom + (h * 0.45).toInt()).coerceAtMost(src.height),
+        )
+        if (padded.width < 4 || padded.height < 4) return line
+        val crop = Bitmap.createBitmap(src, padded.left, padded.top, padded.width, padded.height)
+        val scale = (110f / h).coerceIn(3f, 6f)
+        val (img, s) = Preprocess.apply(crop, Prep.UPSCALE, forcedScale = scale)
+        // Latin text only needs the Latin model (the others read Latin too, but worse); other
+        // scripts, and a clan next to a Hangul name, get every model.
+        val latinOnly = !preferKorean && Scripts.dominant(line.text) == java.lang.Character.UnicodeScript.LATIN
+        val raw = ocr.recognizeRaw(img, s, if (latinOnly) setOf("latin") else null)
+        val readings = raw.mapNotNull { (source, ls) ->
+            // Only text on the original line: its vertical centre must fall inside the first box
+            // (the padding can catch the clan line below or the badge above).
+            val top = b.top - padded.top
+            val bottom = b.bottom - padded.top
+            val row = ls.filter { it.box.centerY in top..bottom }.sortedBy { it.box.left }
+            if (row.isEmpty()) null
+            else OcrLine(
+                trimStrayTokens(row.joinToString(" ") { it.text }), b, row.map { it.confidence }.average().toFloat(),
+                "$source+2nd", warmth = line.warmth,
+            )
+        }
+        val desc = readings.joinToString { "${it.source.removeSuffix("+2nd")}='${it.text}' ${"%.2f".format(it.confidence)}" }
+        // ML Kit's Korean model cannot emit lone jamo: a jamo clan like "ㅅㅁㅂ" comes back as weak
+        // syllables ("스므", 0.17). Prefer it only when it is reasonably confident; otherwise the
+        // CJK reading stays and the 人口日 -> ㅅㅁㅂ homoglyph fold in StringSim matches it.
+        val korean = readings.firstOrNull { it.source == "korean+2nd" && StringSim.hasHangul(it.text) && it.confidence >= 0.4f }
+        val chosen = if (preferKorean && korean != null && !StringSim.hasHangul(line.text)) {
+            korean
+        } else {
+            val script = Scripts.dominant(line.text)
+            readings
+                .filter { r -> Scripts.fitFraction(r.text, r.source.removeSuffix("+2nd")) >= 0.5 }
+                .filter { r -> Scripts.dominant(r.text) == script || preferKorean && StringSim.hasHangul(r.text) }
+                .filter { r -> Scripts.letterCount(r.text) >= Scripts.letterCount(line.text) * 0.6 }
+                .maxByOrNull { it.confidence }
+                ?.takeIf { it.confidence > line.confidence }
+        }
+        val note = "'${line.text}' (${line.source} ${"%.2f".format(line.confidence)}) -> " +
+            (chosen?.let { "'${it.text}' (${it.source} ${"%.2f".format(it.confidence)})" } ?: "kept") + "; 2nd pass x$scale: $desc"
+        L.i("refine: $note")
+        notes += note
+        return chosen ?: line
     }
 
     private suspend fun applyTesseract(src: Bitmap, lines0: List<OcrLine>, pick0: NamePick): Triple<List<OcrLine>, NamePick, Boolean> {
@@ -162,6 +242,20 @@ class Analyzer(
         pick.name?.let { lookup.lookup(it.text, pick.clan?.text) }
 
     companion object {
+        /**
+         * Drops 1-2 character tokens that contain none of the line's main script: at the start
+         * (a badge edge read as "1" or "|" next to a Hangul name) and symbol-only ones at the end.
+         */
+        fun trimStrayTokens(text: String): String {
+            val tokens = text.trim().split(Regex("\\s+")).toMutableList()
+            val script = Scripts.dominant(text) ?: return text.trim()
+            fun stray(t: String) = t.length <= 2 && t.none { Character.UnicodeScript.of(it.code) == script }
+            while (tokens.size > 1 && stray(tokens.first())) tokens.removeAt(0)
+            // Trailing digits are often part of the name ("Macle 2"), so only symbols are dropped there.
+            while (tokens.size > 1 && stray(tokens.last()) && tokens.last().none { it.isDigit() }) tokens.removeAt(tokens.size - 1)
+            return tokens.joinToString(" ")
+        }
+
         /**
          * Why the region should be grown and OCR'd again: no name, a name that is not
          * name-coloured, or a name touching the top edge (probably cut off).
