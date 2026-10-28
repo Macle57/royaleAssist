@@ -25,6 +25,8 @@ data class PlayerEntity(
     val trophies: Int?,
     val statsJson: String,
     val battleJson: String?,
+    /** JSON list of RecentDeck (up to 3 unique decks); added in schema 2. */
+    val decksJson: String? = null,
     val strategy: String?,
     val score: Double,
     val strongMatch: Boolean,
@@ -90,13 +92,21 @@ interface CacheDao {
     suspend fun clearSearches()
 }
 
-@Database(entities = [PlayerEntity::class, QueryEntity::class, SearchEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PlayerEntity::class, QueryEntity::class, SearchEntity::class], version = 2, exportSchema = false)
 abstract class CacheDb : RoomDatabase() {
     abstract fun dao(): CacheDao
 
     companion object {
+        /** Schema 2: recent unique decks per player. Keeps existing history. */
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE players ADD COLUMN decksJson TEXT")
+            }
+        }
+
         fun create(context: Context): CacheDb =
             Room.databaseBuilder(context, CacheDb::class.java, "lookup-cache.db")
+                .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration(true)
                 .build()
     }

@@ -206,10 +206,16 @@ private fun SetupScreen(app: RoyaleAssistApp) {
                 checked = overlay.alwaysPin,
             ) { on -> setOverlay { it.copy(alwaysPin = on) } }
             SwitchRow(
-                title = "Show only the last-battle deck",
-                body = "The card shows the opponent's 8 cards from their most recent battle instead of stats. Pin it to see both.",
+                title = "Show only recent decks",
+                body = "The card shows the opponent's recent unique decks (card icons only) instead of stats. Pin it to see levels, when each deck was played, and the stats.",
                 checked = overlay.deckOnly,
             ) { on -> setOverlay { it.copy(deckOnly = on) } }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Decks to show", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (1..3).forEach { n -> ChoiceChip("$n", selected = overlay.decksToShow == n) { setOverlay { it.copy(decksToShow = n) } } }
+                }
+            }
         }
 
         SectionCard("Scan region") {
@@ -495,7 +501,15 @@ private fun ResultCard(r: LookupResult) {
             Text(s.name, style = MaterialTheme.typography.headlineSmall, color = Royal.Elixir)
             Text("#${s.tag}", style = MaterialTheme.typography.titleMedium, color = Royal.Gold)
             s.clanName?.let { Text(it + (s.clanTag?.let { t -> "  #$t" } ?: ""), style = MaterialTheme.typography.bodyMedium) }
-            r.lastBattle?.let { b ->
+            if (r.recentDecks.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Recent unique decks (${r.lastBattle?.source ?: ""})", style = MaterialTheme.typography.labelSmall, color = Royal.Mist)
+                r.recentDecks.forEach { d ->
+                    Box(Modifier.width(260.dp).padding(top = 4.dp)) { DeckGrid(d.cards) }
+                    Text(BattleLog.usageLine(d), style = MaterialTheme.typography.labelSmall, color = Royal.Mist)
+                }
+                Spacer(Modifier.height(6.dp))
+            } else r.lastBattle?.let { b ->
                 Spacer(Modifier.height(8.dp))
                 Text("Last battle deck", style = MaterialTheme.typography.labelSmall, color = Royal.Mist)
                 Box(Modifier.width(260.dp)) { DeckGrid(b) }

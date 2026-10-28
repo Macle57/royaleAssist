@@ -28,14 +28,17 @@ data class OverlayPrefs(
     val alwaysPin: Boolean = false,
     /** Size of bubble and panel (dp and text), 0.75..1.5. */
     val scale: Float = 1f,
-    /** Card shows the opponent's last-battle deck instead of the stats block. */
+    /** Card shows the opponent's recent decks instead of the stats block. */
     val deckOnly: Boolean = false,
+    /** How many unique recent decks the deck view shows (1..3). */
+    val decksToShow: Int = 3,
 ) {
     fun normalized() = copy(
         bubbleAlpha = bubbleAlpha.coerceIn(MIN_ALPHA, 1f),
         panelAlpha = panelAlpha.coerceIn(MIN_ALPHA, 1f),
         autoHideSeconds = autoHideSeconds.coerceIn(2, 30),
         scale = scale.coerceIn(0.75f, 1.5f),
+        decksToShow = decksToShow.coerceIn(1, 3),
     )
 
     companion object {
@@ -60,6 +63,7 @@ class Settings(private val context: Context) {
     private val alwaysPinKey = booleanPreferencesKey("always_pin")
     private val scaleKey = floatPreferencesKey("overlay_scale")
     private val deckOnlyKey = booleanPreferencesKey("deck_only")
+    private val decksToShowKey = intPreferencesKey("decks_to_show")
 
     val overlayPrefs: Flow<OverlayPrefs> = context.dataStore.data.map { p ->
         val d = OverlayPrefs()
@@ -70,6 +74,7 @@ class Settings(private val context: Context) {
             alwaysPin = p[alwaysPinKey] ?: d.alwaysPin,
             scale = p[scaleKey] ?: d.scale,
             deckOnly = p[deckOnlyKey] ?: d.deckOnly,
+            decksToShow = p[decksToShowKey] ?: d.decksToShow,
         ).normalized()
     }
 
@@ -79,7 +84,7 @@ class Settings(private val context: Context) {
             val cur = OverlayPrefs(
                 p[bubbleAlphaKey] ?: d.bubbleAlpha, p[panelAlphaKey] ?: d.panelAlpha,
                 p[autoHideKey] ?: d.autoHideSeconds, p[alwaysPinKey] ?: d.alwaysPin,
-                p[scaleKey] ?: d.scale, p[deckOnlyKey] ?: d.deckOnly,
+                p[scaleKey] ?: d.scale, p[deckOnlyKey] ?: d.deckOnly, p[decksToShowKey] ?: d.decksToShow,
             )
             val n = change(cur).normalized()
             p[bubbleAlphaKey] = n.bubbleAlpha
@@ -88,6 +93,7 @@ class Settings(private val context: Context) {
             p[alwaysPinKey] = n.alwaysPin
             p[scaleKey] = n.scale
             p[deckOnlyKey] = n.deckOnly
+            p[decksToShowKey] = n.decksToShow
         }
     }
 

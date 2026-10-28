@@ -245,13 +245,17 @@ class LookupChain(
     /** Builds a result from a cache entry; fetches only a missing deck when the deck view needs it. */
     private suspend fun fromCache(ctx: Ctx, c: LookupCache.Cached, strategy: String?): LookupResult {
         var battle = c.battle
+        var decks = c.decks
         var battleError: String? = null
-        if (ctx.wantDeck && battle == null) {
-            ctx.log("cache has no deck; fetching the battle log")
-            val r = fetchLastBattle(ctx, c.entity.tag)
-            battle = r.getOrNull()
+        if (ctx.wantDeck && (battle == null || decks.isEmpty())) {
+            ctx.log("cache has no recent decks; fetching the battle log")
+            val r = fetchDecks(ctx, c.entity.tag)
+            r.getOrNull()?.let { info ->
+                battle = info.last
+                decks = info.decks
+                cache?.updateDecks(c.entity.tag, info.last, info.decks)
+            }
             battleError = r.exceptionOrNull()?.message
-            battle?.let { cache?.updateBattle(c.entity.tag, it) }
         }
         cache?.touch(c.entity.tag, clock())
         return LookupResult(
@@ -263,6 +267,7 @@ class LookupChain(
             stats = c.stats,
             strongMatch = c.entity.strongMatch,
             lastBattle = battle,
+            recentDecks = decks,
             lastBattleError = battleError,
             cached = true,
             fetchedAt = c.entity.fetchedAt,
@@ -284,7 +289,7 @@ class LookupChain(
         // Stats and (when the deck view is on) the last battle are fetched in parallel.
         val (stats, battle) = coroutineScope {
             val s = async { fetchStats(ctx, found.hit) }
-            val b = async { if (ctx.wantDeck) fetchLastBattle(ctx, found.hit.tag) else null }
+            val b = async { if (ctx.wantDeck) fetchDecks(ctx, found.hit.tag) else null }
             s.await() to b.await()
         }
         return LookupResult(
@@ -297,7 +302,8 @@ class LookupChain(
             alternatives = alternatives,
             needsVerification = ctx.cloudflareBlocked,
             strongMatch = strong,
-            lastBattle = battle?.getOrNull(),
+            lastBattle = battle?.getOrNull()?.last,
+            recentDecks = battle?.getOrNull()?.decks.orEmpty(),
             lastBattleError = battle?.exceptionOrNull()?.message,
             fetchedAt = clock(),
             log = ctx.log,
@@ -308,13 +314,21 @@ class LookupChain(
         }
     }
 
-    /** Last battle deck: official battle log with a token, else the RoyaleAPI battles page. */
-    private suspend fun fetchLastBattle(ctx: Ctx, tag: String): Result<LastBattle> {
+    /** Decks the deck view needs: the newest battle plus up to [MAX_DECKS] unique recent decks. */
+    data class DeckInfo(val last: LastBattle, val decks: List<RecentDeck>)
+
+    /**
+     * Official battle log (25 battles) with a token; otherwise the royaleapi.com battles page (newest
+     * 5 battles), topped up from the player's Decks tab when that gives fewer than [MAX_DECKS].
+     */
+    private suspend fun fetchDecks(ctx: Ctx, tag: String): Result<DeckInfo> {
         ctx.token?.let { token ->
             try {
-                BattleLog.fromApi(api.battleLog(tag, token), tag)?.let {
-                    ctx.log("battle: official API ok (${it.mode})")
-                    return Result.success(it)
+                val battles = BattleLog.fromApiAll(api.battleLog(tag, token), tag)
+                if (battles.isNotEmpty()) {
+                    val decks = BattleLog.uniqueDecks(battles, MAX_DECKS)
+                    ctx.log("battle: official API ok (${battles.size} battles, ${decks.size} unique decks)")
+                    return Result.success(DeckInfo(battles.first(), decks))
                 }
                 ctx.log("battle: official API battle log empty")
             } catch (e: CancellationException) {
@@ -324,14 +338,25 @@ class LookupChain(
             }
         }
         return try {
-            val b = BattleLog.parseRoyaleApi(http.getHtml(RoyaleApiWeb.battlesUrl(tag)), tag)
-            if (b != null) {
-                ctx.log("battle: royaleapi.com battles ok (${b.mode}, ${b.cards.size} cards)")
-                Result.success(b)
-            } else {
+            val battles = BattleLog.parseRoyaleApiBattles(http.getHtml(RoyaleApiWeb.battlesUrl(tag)), tag)
+            if (battles.isEmpty()) {
                 ctx.log("battle: no battles on royaleapi.com")
-                Result.failure(IllegalStateException("No recent battles found"))
+                return Result.failure(IllegalStateException("No recent battles found"))
             }
+            var decks = BattleLog.uniqueDecks(battles, MAX_DECKS)
+            if (decks.size < MAX_DECKS) {
+                try {
+                    val tab = BattleLog.parseRoyaleApiDecksTab(http.getHtml(RoyaleApiWeb.decksUrl(tag)))
+                    decks = BattleLog.uniqueDecks(battles, MAX_DECKS, tab)
+                    ctx.log("battle: decks tab added ${tab.size} decks")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ctx.log("battle: decks tab failed: ${e.message}")
+                }
+            }
+            ctx.log("battle: royaleapi.com battles ok (${battles.size} battles, ${decks.size} unique decks, newest ${battles.first().mode})")
+            Result.success(DeckInfo(battles.first(), decks))
         } catch (e: CancellationException) {
             throw e
         } catch (e: CloudflareBlockedException) {
@@ -377,6 +402,7 @@ class LookupChain(
     }
 
     companion object {
+        const val MAX_DECKS = 3
         const val FALLBACK_SOURCE = "search result only"
         const val STRONG_NAME_SIM = 0.85
         const val STRONG_CLAN_SIM = 0.75

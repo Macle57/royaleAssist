@@ -298,6 +298,8 @@ class OverlayService : Service() {
                     onVerify = { openVerifier() },
                     alpha = p.panelAlpha,
                     deckOnly = p.deckOnly,
+                    decksToShow = p.decksToShow,
+                    scale = p.scale,
                     onRefresh = { tag -> refreshPlayer(tag) },
                     onOpenWeb = { tag -> openOnRoyaleApi(tag) },
                 )
@@ -331,7 +333,8 @@ class OverlayService : Service() {
         val p = params ?: return
         val dm = resources.displayMetrics
         val bubble = scaledDp(56)
-        val panelW = if (isMiniDeck()) scaledDp(MINI_DECK_WIDTH.value.roundToInt()) else scaledDp(264)
+        val miniCount = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size
+        val panelW = if (isMiniDeck()) scaledDp(miniDeckWidth(miniCount, prefs.value.scale).value.roundToInt()) else scaledDp(264)
         val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
         val besideX = if (onLeft) bubbleParams.x + bubble + gap else bubbleParams.x - panelW - gap
@@ -351,7 +354,7 @@ class OverlayService : Service() {
 
     /** True while the panel shows only the 8 deck icons (narrower window). */
     private fun isMiniDeck() = prefs.value.deckOnly && !pinned.value &&
-        (panel.value as? PanelState.Result)?.result?.lastBattle != null
+        decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).isNotEmpty()
 
     private fun removePanel() {
         hideJob?.cancel()

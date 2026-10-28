@@ -48,6 +48,8 @@ data class LookupResult(
     val strongMatch: Boolean = false,
     /** The player's deck in their most recent battle (only fetched when the deck view is on). */
     val lastBattle: LastBattle? = null,
+    /** Up to three unique recent decks, newest first (deck view). */
+    val recentDecks: List<RecentDeck> = emptyList(),
     /** Why [lastBattle] is missing although it was requested. */
     val lastBattleError: String? = null,
     /** Served from the local cache; [fetchedAt] is when the data was fetched (epoch ms). */
@@ -58,7 +60,32 @@ data class LookupResult(
 )
 
 @Serializable
-data class DeckCard(val name: String, val level: Int?, val iconUrl: String?)
+data class DeckCard(
+    val name: String,
+    val level: Int?,
+    val iconUrl: String?,
+    /** Card key ("hog-rider", "knight-hero", "tesla-ev1"); null for old cache entries. */
+    val key: String? = null,
+)
+
+/**
+ * One of the opponent's recently used decks (unique by card set, ignoring levels and
+ * evolution/hero variants). Built from the newest battles and, on the website, topped up from the
+ * player's "Decks" tab (last 7 days).
+ */
+@Serializable
+data class RecentDeck(
+    val cards: List<DeckCard>,
+    /** Mode and time (epoch s) of the newest battle that used this deck; null if only known from the Decks tab. */
+    val lastMode: String? = null,
+    val lastTime: Long? = null,
+    /** Used in [battleUses] of the [battlesSeen] newest battles. */
+    val battleUses: Int = 0,
+    val battlesSeen: Int = 0,
+    /** Decks tab: played in [weekGames] of [weekTotal] games in the last 7 days. */
+    val weekGames: Int? = null,
+    val weekTotal: Int? = null,
+)
 
 @Serializable
 data class LastBattle(

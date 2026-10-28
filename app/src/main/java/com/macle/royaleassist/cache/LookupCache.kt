@@ -5,6 +5,7 @@ import com.macle.royaleassist.lookup.LastBattle
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.PlayerHit
 import com.macle.royaleassist.lookup.PlayerStats
+import com.macle.royaleassist.lookup.RecentDeck
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 
@@ -12,12 +13,17 @@ import kotlinx.serialization.json.Json
 class LookupCache(private val dao: CacheDao) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    data class Cached(val entity: PlayerEntity, val stats: PlayerStats, val battle: LastBattle?)
+    data class Cached(val entity: PlayerEntity, val stats: PlayerStats, val battle: LastBattle?, val decks: List<RecentDeck> = emptyList())
 
     fun history(): Flow<List<PlayerEntity>> = dao.history()
 
     fun decode(e: PlayerEntity): Cached? = runCatching {
-        Cached(e, json.decodeFromString<PlayerStats>(e.statsJson), e.battleJson?.let { json.decodeFromString<LastBattle>(it) })
+        Cached(
+            e,
+            json.decodeFromString<PlayerStats>(e.statsJson),
+            e.battleJson?.let { json.decodeFromString<LastBattle>(it) },
+            e.decksJson?.let { json.decodeFromString<List<RecentDeck>>(it) }.orEmpty(),
+        )
     }.onFailure { L.w("cache: cannot decode ${e.tag}: ${it.message}") }.getOrNull()
 
     suspend fun byTag(tag: String): Cached? = dao.player(tag)?.let(::decode)
@@ -44,6 +50,7 @@ class LookupCache(private val dao: CacheDao) {
         val old = dao.player(tag)
         // Keep an older cached deck if this fetch did not get one.
         val battleJson = r.lastBattle?.let { json.encodeToString(it) } ?: old?.battleJson
+        val decksJson = r.recentDecks.takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) } ?: old?.decksJson
         dao.upsertPlayer(
             PlayerEntity(
                 tag = tag,
@@ -53,6 +60,7 @@ class LookupCache(private val dao: CacheDao) {
                 trophies = stats.trophies,
                 statsJson = json.encodeToString(stats),
                 battleJson = battleJson,
+                decksJson = decksJson,
                 strategy = r.strategy,
                 score = r.confidence,
                 strongMatch = r.strongMatch,
@@ -74,9 +82,9 @@ class LookupCache(private val dao: CacheDao) {
         dao.upsertPlayer(old.copy(lastSeenAt = now, seenCount = old.seenCount + 1))
     }
 
-    suspend fun updateBattle(tag: String, battle: LastBattle) {
+    suspend fun updateDecks(tag: String, battle: LastBattle, decks: List<RecentDeck>) {
         val old = dao.player(tag) ?: return
-        dao.upsertPlayer(old.copy(battleJson = json.encodeToString(battle)))
+        dao.upsertPlayer(old.copy(battleJson = json.encodeToString(battle), decksJson = json.encodeToString(decks)))
     }
 
     suspend fun delete(tag: String) {
@@ -101,6 +109,7 @@ fun LookupCache.Cached.toResult() = com.macle.royaleassist.lookup.LookupResult(
     stats = stats,
     strongMatch = entity.strongMatch,
     lastBattle = battle,
+    recentDecks = decks,
     cached = true,
     fetchedAt = entity.fetchedAt,
 )

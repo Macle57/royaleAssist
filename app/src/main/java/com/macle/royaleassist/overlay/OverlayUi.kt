@@ -64,6 +64,7 @@ import com.macle.royaleassist.cache.CachePolicy
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import com.macle.royaleassist.lookup.LastBattle
+import com.macle.royaleassist.lookup.DeckCard
 import com.macle.royaleassist.lookup.LookupResult
 import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.aspectRatio
@@ -81,6 +82,26 @@ import kotlin.math.roundToInt
 /** Minimal deck card: 4 icons of ~46 dp, 3 dp gaps and edge. */
 val MINI_DECK_GAP = 3.dp
 val MINI_DECK_WIDTH = 46.dp * 4 + MINI_DECK_GAP * 5
+
+/** With several decks the icons shrink so three decks fit about where one big card was. */
+val MINI_DECK_SMALL_ICON = 32.dp
+
+/** Three decks go side by side (instead of stacked) when the overlay is scaled down this far. */
+const val SIDE_BY_SIDE_MAX_SCALE = 0.85f
+
+/** Decks shown in the deck view: the recent unique decks, else the newest battle's deck. */
+fun decksFor(r: LookupResult?, n: Int): List<List<DeckCard>> {
+    if (r == null) return emptyList()
+    val recent = r.recentDecks.take(n).map { it.cards }
+    return recent.ifEmpty { listOfNotNull(r.lastBattle?.cards) }
+}
+
+/** Width of the minimal deck card for [count] decks. */
+fun miniDeckWidth(count: Int, scale: Float): androidx.compose.ui.unit.Dp = when {
+    count <= 1 -> MINI_DECK_WIDTH
+    scale <= SIDE_BY_SIDE_MAX_SCALE -> (MINI_DECK_SMALL_ICON * 4 + MINI_DECK_GAP * 3) * count + MINI_DECK_GAP * 2 + 1.dp * (count - 1) + MINI_DECK_GAP * 2 * (count - 1)
+    else -> MINI_DECK_SMALL_ICON * 4 + MINI_DECK_GAP * 5
+}
 
 sealed interface PanelState {
     data object Hidden : PanelState
@@ -143,22 +164,40 @@ fun Panel(
     onRefresh: ((String) -> Unit)? = null,
     onOpenWeb: ((String) -> Unit)? = null,
     showCloseHint: Boolean = true,
+    decksToShow: Int = 3,
+    scale: Float = 1f,
 ) {
-    val battle = (state as? PanelState.Result)?.result?.lastBattle
-    if (deckOnly && !pinned && battle != null) {
-        // Minimal transient deck card: just the 8 icons. Tap to pin for the full layout.
+    val decks = decksFor((state as? PanelState.Result)?.result, decksToShow)
+    if (deckOnly && !pinned && decks.isNotEmpty()) {
+        // Minimal transient deck card: only card icons, newest deck first, 1 px separators.
+        // Tap to pin for the full layout.
         val mini = RoundedCornerShape(8.dp)
-        Box(
-            Modifier
-                .width(MINI_DECK_WIDTH)
-                .graphicsLayer { this.alpha = alpha }
-                .clip(mini)
-                .background(Royal.Night.copy(alpha = 0.55f))
-                .border(1.dp, Royal.Gold.copy(alpha = 0.3f), mini)
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
-                .padding(MINI_DECK_GAP)
-        ) {
-            DeckGrid(battle, showLevels = false, gap = MINI_DECK_GAP)
+        val sideBySide = decks.size > 1 && scale <= SIDE_BY_SIDE_MAX_SCALE
+        val iconW = if (decks.size == 1) 46.dp else MINI_DECK_SMALL_ICON
+        val gridW = iconW * 4 + MINI_DECK_GAP * 3
+        val modifier = Modifier
+            .width(miniDeckWidth(decks.size, scale))
+            .graphicsLayer { this.alpha = alpha }
+            .clip(mini)
+            .background(Royal.Night.copy(alpha = 0.55f))
+            .border(1.dp, Royal.Gold.copy(alpha = 0.3f), mini)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
+            .padding(MINI_DECK_GAP)
+        val separatorColor = Royal.Gold.copy(alpha = 0.35f)
+        if (sideBySide) {
+            Row(modifier, horizontalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
+                decks.forEachIndexed { i, cards ->
+                    if (i > 0) Box(Modifier.width(1.dp).height(iconW * 2.4f + MINI_DECK_GAP).background(separatorColor))
+                    Box(Modifier.width(gridW)) { DeckGrid(cards, showLevels = false, gap = MINI_DECK_GAP) }
+                }
+            }
+        } else {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
+                decks.forEachIndexed { i, cards ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(separatorColor))
+                    DeckGrid(cards, showLevels = false, gap = MINI_DECK_GAP)
+                }
+            }
         }
         return
     }
@@ -196,7 +235,7 @@ fun Panel(
                     state.pick?.name?.let { NameHeader(it.text, state.pick.clan?.text, null) }
                     Text(state.message, color = Royal.Danger, style = MaterialTheme.typography.bodyMedium)
                 }
-                is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned)
+                is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned, decksToShow)
             }
             if (pinned) PinnedExtras(state, onRetry, onPickLine, onVerify, onRefresh, onOpenWeb)
         }
@@ -211,7 +250,7 @@ private fun NameHeader(name: String, clan: String?, tag: String?) {
 }
 
 @Composable
-private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOnly: Boolean, pinned: Boolean) {
+private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOnly: Boolean, pinned: Boolean, decksToShow: Int = 3) {
     val r = state.result
     val s = r?.stats
     if (r == null || s == null) {
@@ -235,14 +274,28 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOn
             Spacer(Modifier.width(6.dp))
             Text("#${s.tag}", style = MaterialTheme.typography.labelSmall, color = Royal.Gold)
         }
-        Spacer(Modifier.height(6.dp))
-        DeckGrid(battle)
-        Text(
-            listOfNotNull(battle.mode, BattleLog.relative(battle.time)).joinToString(", "),
-            style = MaterialTheme.typography.labelSmall,
-            color = Royal.Mist,
-            modifier = Modifier.padding(top = 4.dp),
-        )
+        val recent = r.recentDecks.take(decksToShow)
+        if (recent.isEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            DeckGrid(battle)
+            Text(
+                listOfNotNull(battle.mode, BattleLog.relative(battle.time)).joinToString(", "),
+                style = MaterialTheme.typography.labelSmall,
+                color = Royal.Mist,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        } else {
+            recent.forEachIndexed { i, d ->
+                Spacer(Modifier.height(if (i == 0) 6.dp else 10.dp))
+                DeckGrid(d.cards)
+                Text(
+                    BattleLog.usageLine(d),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Royal.Mist,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
         if (!pinned) return
         Spacer(Modifier.height(10.dp))
     }
@@ -267,9 +320,13 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOn
 
 /** Two rows of four card images with their levels. */
 @Composable
-fun DeckGrid(battle: LastBattle, showLevels: Boolean = true, gap: androidx.compose.ui.unit.Dp = 4.dp) {
+fun DeckGrid(battle: LastBattle, showLevels: Boolean = true, gap: androidx.compose.ui.unit.Dp = 4.dp) =
+    DeckGrid(battle.cards, showLevels, gap)
+
+@Composable
+fun DeckGrid(cards: List<DeckCard>, showLevels: Boolean = true, gap: androidx.compose.ui.unit.Dp = 4.dp) {
     Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-        battle.cards.chunked(4).forEach { row ->
+        cards.chunked(4).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 row.forEach { card ->
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {

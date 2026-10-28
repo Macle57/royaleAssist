@@ -29,6 +29,8 @@ object RoyaleApiWeb {
 
     fun battlesUrl(tag: String) = "$BASE/player/${tagNoHash(tag)}/battles"
 
+    fun decksUrl(tag: String) = "$BASE/player/${tagNoHash(tag)}/decks"
+
     fun clanSearchUrl(name: String) = "$BASE/clans/search?name=${URLEncoder.encode(name, "UTF-8")}"
 
     fun clanUrl(tag: String) = "$BASE/clan/${tagNoHash(tag)}"
