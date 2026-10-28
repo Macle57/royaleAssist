@@ -80,3 +80,47 @@ class SymbolSearchTest {
         assertEquals(listOf("Zodiac是传", "Zodia", "Zod"), LookupChain.progressivePrefixes("Zodiac™ 是传奇"))
     }
 }
+
+/** Picker cases recorded from the corpus run (lines and warmth as measured on the emulator). */
+class CorpusPickerTest {
+    private fun l(text: String, b: IntArray, c: Float, w: Double, src: String = "latin") =
+        OcrLine(text, Box(b[0], b[1], b[2], b[3]), c, src, warmth = w)
+
+    @Test
+    fun badgeMisreadByDevanagariDoesNotBeatChineseName() {
+        // P5t5pCjb_oE_555: the gold "16" badge read as 'आह=' (0.15) was warmer than the name.
+        val p = NamePicker.pick(
+            listOf(
+                l("天上星星不说话", intArrayOf(82, 142, 353, 173), 0.64f, 0.35, "chinese"),
+                l("6322", intArrayOf(417, 158, 495, 186), 0.83f, 0.07),
+                l("आह=", intArrayOf(337, 166, 399, 209), 0.15f, 0.57, "devanagari"),
+                l("对线生活", intArrayOf(82, 192, 178, 215), 0.77f, 0.0, "chinese"),
+                l("2409", intArrayOf(82, 234, 154, 256), 0.88f, 0.0),
+            )
+        )
+        assertEquals("天上星星不说话", p.name?.text)
+        assertEquals("对线生活", p.clan?.text)
+    }
+
+    @Test
+    fun slightlyTallerClanAndClanWithDigits() {
+        // 8d_XyUB0_i0_545: clan line 44 px under a 39 px name; TV5D2rbYvDI_65: clan "CRL2026".
+        val a = NamePicker.pick(
+            listOf(
+                l("BU 14 AMaRw", intArrayOf(125, 142, 428, 181), 0.64f, 0.33),
+                l("Coaching", intArrayOf(100, 197, 245, 241), 0.91f, 0.0),
+                l("2346", intArrayOf(110, 252, 186, 276), 0.89f, 0.0),
+            )
+        )
+        assertEquals("Coaching", a.clan?.text)
+        val b = NamePicker.pick(
+            listOf(
+                l("むぎったん", intArrayOf(80, 9, 246, 49), 0.45f, 0.15, "japanese"),
+                l("CRL2026", intArrayOf(85, 63, 213, 88), 0.86f, 0.0),
+                l("3350", intArrayOf(86, 106, 160, 129), 0.92f, 0.0),
+            )
+        )
+        assertEquals("むぎったん", b.name?.text)
+        assertEquals("CRL2026", b.clan?.text)
+    }
+}

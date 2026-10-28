@@ -51,7 +51,8 @@ object Scripts {
     }
 
     /** Fraction of letters in [s] that belong to the script(s) a recognizer specialises in. */
-    fun fitFraction(s: String, source: String): Double {
+    fun fitFraction(s: String, source0: String): Double {
+        val source = source0.removeSuffix("+2nd")
         val wanted: Set<UnicodeScript> = when (source) {
             "chinese" -> setOf(UnicodeScript.HAN)
             "japanese" -> setOf(UnicodeScript.HAN, UnicodeScript.HIRAGANA, UnicodeScript.KATAKANA)
@@ -70,6 +71,18 @@ object Scripts {
             }
         }
         return if (letters == 0) 0.0 else fit.toDouble() / letters
+    }
+
+    /**
+     * For CJK/kana/Hangul recognizers: a mixed reading such as "まるNoxi" or "Zodiac 是传奇" fits
+     * when it has at least one character of the recognizer's script and the rest is Latin.
+     */
+    fun mixedFit(s: String, source0: String): Boolean {
+        val source = source0.removeSuffix("+2nd")
+        if (source !in setOf("chinese", "japanese", "korean")) return false
+        val own = fitFraction(s, source)
+        if (own <= 0.0) return false
+        return own + fitFraction(s, "latin") >= 0.85
     }
 
     fun letterCount(s: String) = s.codePoints().filter { Character.isLetter(it) }.count().toInt()

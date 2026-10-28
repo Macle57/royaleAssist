@@ -28,7 +28,7 @@ object StringSim {
         for (ch in n) {
             val c = when (ch) {
                 '0' -> 'o'
-                '1', '|', 'i', '!' -> 'l'
+                '1', '|', 'i', '!', 'ı' -> 'l'
                 '5' -> 's'
                 'θ', 'Θ', 'ø' -> 'o'
                 else -> ch

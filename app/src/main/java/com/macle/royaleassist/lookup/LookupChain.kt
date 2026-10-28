@@ -462,6 +462,9 @@ class LookupChain(
             val lengths = when {
                 !latin && s.length >= 4 -> listOf(8, 5, 3)
                 latin && s.length > 10 -> listOf(10, 7, 5)
+                // Shorter Latin names still get prefixes: small-caps OCR slips ("Kiappen" for
+                // "Klapper") are usually late in the name.
+                latin && s.length >= 8 -> listOf(7, 5, 4)
                 else -> emptyList()
             }
             return lengths.filter { it < s.length }.map { s.take(it) }.filter { isPlausibleText(it) }.distinct()

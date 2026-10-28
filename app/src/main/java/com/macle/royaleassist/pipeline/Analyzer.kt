@@ -89,6 +89,7 @@ class Analyzer(
         }
         o = refine(src, o)
         o = withTesseract(src, o)
+        o = tidy(o)
         L.i("analyze: final name='${o.pick.name?.text}' clan='${o.pick.clan?.text}' in ${System.currentTimeMillis() - t0} ms")
         if (o.pick.name != null || !fullScreenFallback) return o
         L.i("analyze: nothing in the region, falling back to a full-screen scan")
@@ -102,6 +103,14 @@ class Analyzer(
         return ocrAndPick(crop, inCrop, useTesseract = false, forcedScale = regionScale(box), secondPass = false)
             .offset(box.left, box.top)
             .copy(mode = "region", scanned = box, crop = crop)
+    }
+
+    private fun tidy(o: OcrOutcome): OcrOutcome {
+        val n = o.pick.name ?: return o
+        val t = tidyName(n.text)
+        if (t == n.text || t.isEmpty()) return o
+        val nn = n.copy(text = t)
+        return o.copy(lines = o.lines.map { if (it === n) nn else it }, pick = o.pick.copy(name = nn))
     }
 
     /** Tesseract fallback on a region outcome (boxes in [src] coordinates). */
@@ -139,7 +148,11 @@ class Analyzer(
     private suspend fun refine(src: Bitmap, o: OcrOutcome): OcrOutcome {
         val name = o.pick.name ?: return o
         val notes = mutableListOf<String>()
-        val newName = reread(src, name, preferKorean = false, notes)
+        // Name and clan text are left-aligned after the badge: if ML Kit dropped the name's first
+        // letters, the clan's left edge shows where the name really starts.
+        val below = o.lines.filter { it !== name && it.box.top >= name.box.centerY && it.box.top - name.box.bottom < name.box.height * 2 }
+        val alignLeft = below.minOfOrNull { it.box.left }?.takeIf { it < name.box.left && name.box.left - it < name.box.height * 2 }
+        val newName = reread(src, name, preferKorean = false, notes, alignLeft)
         val hangul = StringSim.hasHangul(newName.text)
         val newClan = o.pick.clan?.let { reread(src, it, preferKorean = hangul, notes) }
         if (newName === name && newClan === o.pick.clan) return o.copy(refinements = o.refinements + notes)
@@ -147,11 +160,11 @@ class Analyzer(
         return o.copy(lines = lines, pick = NamePick(newName, newClan, o.pick.reason), refinements = o.refinements + notes)
     }
 
-    private suspend fun reread(src: Bitmap, line: OcrLine, preferKorean: Boolean, notes: MutableList<String>): OcrLine {
+    private suspend fun reread(src: Bitmap, line: OcrLine, preferKorean: Boolean, notes: MutableList<String>, alignLeft: Int? = null): OcrLine {
         val b = line.box
         val h = b.height.coerceAtLeast(1)
         val padded = Box(
-            (b.left - (h * 0.3).toInt()).coerceAtLeast(0), (b.top - (h * 0.45).toInt()).coerceAtLeast(0),
+            (minOf(b.left, alignLeft ?: b.left) - (h * 0.3).toInt()).coerceAtLeast(0), (b.top - (h * 0.45).toInt()).coerceAtLeast(0),
             (b.right + (h * 0.3).toInt()).coerceAtMost(src.width), (b.bottom + (h * 0.45).toInt()).coerceAtMost(src.height),
         )
         if (padded.width < 4 || padded.height < 4) return line
@@ -160,7 +173,8 @@ class Analyzer(
         val (img, s) = Preprocess.apply(crop, Prep.UPSCALE, forcedScale = scale)
         // Latin text only needs the Latin model (the others read Latin too, but worse); other
         // scripts, and a clan next to a Hangul name, get every model.
-        val latinOnly = !preferKorean && Scripts.dominant(line.text) == java.lang.Character.UnicodeScript.LATIN
+        val latinOnly = !preferKorean && Scripts.dominant(line.text) == java.lang.Character.UnicodeScript.LATIN &&
+            line.text.none { isCjk(it) }
         val raw = ocr.recognizeRaw(img, s, if (latinOnly) setOf("latin") else null)
         val readings = raw.mapNotNull { (source, ls) ->
             // Only text on the original line: its vertical centre must fall inside the first box
@@ -188,7 +202,14 @@ class Analyzer(
                 .filter { r -> Scripts.dominant(r.text) == script || preferKorean && StringSim.hasHangul(r.text) }
                 .filter { r -> Scripts.letterCount(r.text) >= Scripts.letterCount(line.text) * 0.6 }
                 .maxByOrNull { it.confidence }
-                ?.takeIf { it.confidence > line.confidence }
+                // Fewer letters than the first reading (a dropped "M" in "MajiNBuu") needs a clear
+                // confidence gain to win.
+                ?.takeIf {
+                    it.confidence > line.confidence &&
+                        (Scripts.letterCount(line.text) - Scripts.letterCount(it.text)).let { lost ->
+                            lost <= 0 || lost <= 2 && it.confidence >= line.confidence + 0.095f || it.confidence >= line.confidence + 0.15f
+                        }
+                }
         }
         val note = "'${line.text}' (${line.source} ${"%.2f".format(line.confidence)}) -> " +
             (chosen?.let { "'${it.text}' (${it.source} ${"%.2f".format(it.confidence)})" } ?: "kept") + "; 2nd pass x$scale: $desc"
@@ -203,7 +224,8 @@ class Analyzer(
         var tessUsed = false
         val name = pick.name
         if (name != null) {
-            if (pick.clan == null && lines.none { it !== name && it.box.bottom <= name.box.top && it.box.bottom > name.box.top - 3 * name.box.height }) {
+            val hasPlaceholder = lines.any { com.macle.royaleassist.ocr.ClanText.isNoClanPlaceholder(it.text) }
+            if (pick.clan == null && !hasPlaceholder && lines.none { it !== name && it.box.bottom <= name.box.top && it.box.bottom > name.box.top - 3 * name.box.height }) {
                 // Lone line with nothing above it: maybe it is really the clan, and the name above is
                 // in a script ML Kit cannot read (Arabic, Cyrillic). Read the strip above with Tesseract.
                 val above = regionAbove(name.box, src.width)
@@ -243,6 +265,19 @@ class Analyzer(
         pick.name?.let { lookup.lookup(it.text, pick.clan?.text) }
 
     companion object {
+        /** "7あぎったん。" -> "あぎったん": a lone leading digit/symbol stuck to CJK/kana text and trailing 。. */
+        fun tidyName(text: String): String {
+            var t = trimStrayTokens(text.trim().trimEnd('。', '．'))
+            if (t.length >= 3 && !t[0].isLetter() && isCjk(t[1]) && !t[1].isDigit()) t = t.substring(1)
+            return t.trim()
+        }
+
+        private fun isCjk(c: Char) = when (java.lang.Character.UnicodeScript.of(c.code)) {
+            java.lang.Character.UnicodeScript.HAN, java.lang.Character.UnicodeScript.HIRAGANA,
+            java.lang.Character.UnicodeScript.KATAKANA, java.lang.Character.UnicodeScript.HANGUL -> true
+            else -> false
+        }
+
         /**
          * Drops 1-2 character tokens that contain none of the line's main script: at the start
          * (a badge edge read as "1" or "|" next to a Hangul name) and symbol-only ones at the end.
@@ -264,6 +299,8 @@ class Analyzer(
         fun expandReason(o: OcrOutcome, box: Box): String? {
             val n = o.pick.name ?: return "no name in the region"
             if (n.box.top - box.top <= 3) return "name '${n.text}' touches the top of the region"
+            // A pale line right under the top edge may be the clan, with the real name cut off above.
+            if (n.warmth < 0.15 && n.box.top - box.top < n.box.height * 1.2) return "pale line '${n.text}' near the top of the region"
             // Clan probably below the region (pillarboxed or low frames): name near the bottom edge,
             // no clan read and no "No Clan" placeholder either.
             if (o.pick.clan == null && box.bottom - n.box.bottom < n.box.height * 1.5 &&
@@ -291,6 +328,11 @@ class Analyzer(
 
         /** ML Kit has no Arabic/Cyrillic model; a weak or garbled reading of the name triggers Tesseract. */
         fun needsTesseract(name: OcrLine): Boolean {
+            // Mixed Latin+CJK readings and names with real Latin text are not Arabic/Cyrillic.
+            if (Scripts.mixedFit(name.text, name.source)) return false
+            if (Scripts.letterCount(name.text) - Scripts.letterCount(name.text.filter { !(it in 'a'..'z' || it in 'A'..'Z') }) >= 3 &&
+                name.confidence >= 0.4f
+            ) return false
             val letters = Scripts.letterCount(name.text)
             val fit = Scripts.fitFraction(name.text, name.source)
             return name.confidence < 0.5f || letters < 2 || fit < 0.5

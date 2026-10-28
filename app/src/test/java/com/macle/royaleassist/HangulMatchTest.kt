@@ -59,6 +59,7 @@ class HangulMatchTest {
         assertEquals(listOf("동덕여태여자화장", "동덕여태여", "동덕여"), LookupChain.progressivePrefixes(ocr))
         assertEquals(listOf("Thisisaver", "Thisisa", "Thisi"), LookupChain.progressivePrefixes("This is a very long name"))
         assertTrue(LookupChain.progressivePrefixes("Macle").isEmpty())
+        assertEquals(listOf("BigKiap", "BigKi", "BigK"), LookupChain.progressivePrefixes("BigKiappen"))
         assertTrue(LookupChain.progressivePrefixes("4858 1234 5678").isEmpty())
     }
 
@@ -78,5 +79,7 @@ class StrayTokenTest {
         assertEquals("동덕여대 여자", com.macle.royaleassist.pipeline.Analyzer.trimStrayTokens("| 동덕여대 여자 ।"))
         assertEquals("Macle 2", com.macle.royaleassist.pipeline.Analyzer.trimStrayTokens("Macle 2"))
         assertEquals("Royale King", com.macle.royaleassist.pipeline.Analyzer.trimStrayTokens("Royale King"))
+        assertEquals("Zodiac是传奇", com.macle.royaleassist.pipeline.Analyzer.tidyName("1 Zodiac是传奇"))
+        assertEquals("あぎったん", com.macle.royaleassist.pipeline.Analyzer.tidyName("7あぎったん。"))
     }
 }

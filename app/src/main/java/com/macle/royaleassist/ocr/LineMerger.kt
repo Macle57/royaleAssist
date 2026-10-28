@@ -44,6 +44,15 @@ object LineMerger {
             .filter { it.second >= 0.5 }
             .maxByOrNull { it.first.confidence + it.second.toFloat() * 0.2f }
             ?.first
+        // Mixed readings ("まるNoxi", "Zodiac 是传奇"): a CJK model that keeps the Latin part and
+        // adds its own script beats a Latin reading that dropped those characters.
+        val mixed = cluster
+            .filter { it.source != "latin" && Scripts.mixedFit(it.text, it.source) }
+            .maxByOrNull { it.confidence }
+        if (special == null && mixed != null && latin != null &&
+            mixed.confidence >= latin.confidence - 0.1f &&
+            Scripts.letterCount(mixed.text) > Scripts.letterCount(latin.text)
+        ) return mixed
         // A specialised recognizer only beats a confident Latin reading when it is clearly more
         // confident (stops Devanagari/Korean misreads of Latin game text from winning).
         return when {

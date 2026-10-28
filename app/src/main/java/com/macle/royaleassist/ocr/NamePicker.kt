@@ -61,6 +61,9 @@ object NamePicker {
             ClanText.isNoClanPlaceholder(l.text) -> "no-clan placeholder"
             isMostlyDigits(l.text) -> "number/timer"
             letters < 2 -> "fewer than 2 letters"
+            // Misreads of badges/icons by the Devanagari, Bengali or CJK models: very low confidence.
+            letters <= 3 && l.confidence < 0.3f && all.any { it !== l && it.confidence >= 0.4f && Scripts.letterCount(it.text) >= 2 &&
+                !isGameLabel(it.text) && !isMostlyDigits(it.text) && !ClanText.isNoClanPlaceholder(it.text) } -> "low-confidence fragment"
             !isLatin(l) && letters <= 2 && l.confidence < 0.7f &&
                 all.any { it !== l && isLatin(it) && Scripts.letterCount(it.text) >= 2 && !isGameLabel(it.text) && !isMostlyDigits(it.text) } ->
                 "short low-confidence non-Latin fragment"
@@ -70,6 +73,16 @@ object NamePicker {
 
     fun candidates(lines: List<OcrLine>, exclude: Box? = null): List<OcrLine> =
         lines.filter { rejectReason(it, lines, exclude) == null }
+
+    /**
+     * Lines that may be the clan: name candidates plus clan names with digits ("CRL2026",
+     * "10/G POMPAKE") that the name filter treats as numbers. Pure numbers stay out.
+     */
+    fun clanCandidates(lines: List<OcrLine>, exclude: Box?): List<OcrLine> =
+        lines.filter { l ->
+            rejectReason(l, lines, exclude) == null ||
+                (rejectReason(l, lines, exclude) == "number/timer" && Scripts.letterCount(l.text) >= 3)
+        }
 
     fun pick(lines: List<OcrLine>, exclude: Box? = null): NamePick {
         val c = candidates(lines, exclude)
@@ -87,7 +100,7 @@ object NamePicker {
             why = "tallest line (no name-coloured line)"
         }
         // The clan slot may hold "No Clan" (and translations): then the player has no clan.
-        val clan = clanFor(name, c + placeholders)?.takeUnless { ClanText.isNoClanPlaceholder(it.text) }
+        val clan = clanFor(name, clanCandidates(lines, exclude) + placeholders)?.takeUnless { ClanText.isNoClanPlaceholder(it.text) }
         return NamePick(name, clan, why + if (rejected.isNotEmpty()) "; rejected $rejected" else "")
     }
 
@@ -110,7 +123,7 @@ object NamePicker {
                 val b = l.box
                 b.top >= nb.centerY &&                          // below the name
                     b.top - nb.bottom <= 2 * h &&               // but close
-                    b.height <= nb.height * 1.1 &&              // and not taller than it
+                    b.height <= nb.height * 1.25 &&             // and not much taller than it
                     abs(b.left - nb.left) <= max(1.5 * h, 0.25 * nb.width) // left edges aligned
             }
             .minByOrNull { (it.box.top - nb.bottom) + abs(it.box.left - nb.left) / 4 }
