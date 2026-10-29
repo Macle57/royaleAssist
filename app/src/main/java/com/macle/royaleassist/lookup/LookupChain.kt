@@ -10,6 +10,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Turns an OCR'd player name (+ optional clan name) into a player tag and basic stats by trying a
@@ -56,6 +58,8 @@ class LookupChain(
         val candidates = LinkedHashMap<String, Scored>()
         /** Profiles fetched for the tie-break, reused for the final stats. */
         val profiles = HashMap<String, PlayerStats>()
+        /** Battle logs fetched for the recency tie-break (newest first), reused for the decks. */
+        val battles = java.util.concurrent.ConcurrentHashMap<String, List<LastBattle>>()
         fun sc(h: PlayerHit, n: String = name) = score(h, n, clan, noClan)
         /** Another candidate also has a matching name (then only an exact clan decides). */
         fun nameUnique(x: Scored) = candidates.values.none { it.hit.tag != x.hit.tag && it.nameSim >= STRONG_NAME_SIM }
@@ -275,9 +279,10 @@ class LookupChain(
             val strongs = ctx.candidates.values.filter { ctx.strong(it) }
             if (strongs.isNotEmpty()) return decide(ctx, strongs, s.id)
         }
-        val best = ctx.candidates.values.maxByOrNull { it.score }
-        if (best != null && best.nameSim >= MIN_NAME_SIM) {
-            ctx.log("no strong match; using best weak candidate ${describe(best)}")
+        val best0 = ctx.candidates.values.maxByOrNull { it.score }
+        if (best0 != null && best0.nameSim >= MIN_NAME_SIM) {
+            ctx.log("no strong match; using best weak candidate ${describe(best0)}")
+            val best = weakTieByRecency(ctx, best0)
             val note = if (ctx.noClan && !best.hit.clanName.isNullOrBlank()) {
                 "The opponent showed No Clan; this player is in ${best.hit.clanName}."
             } else null
@@ -293,19 +298,42 @@ class LookupChain(
     }
 
     /**
-     * Several strong candidates can remain, e.g. three no-clan players named "mbg"/"MBG"/"Mbg".
-     * Then the profiles of up to [MAX_TIE_PROFILES] of them are compared with what the screen
-     * showed (ranked league, else trophies); exactly one agreeing player is a strong match,
-     * anything else is a best guess with the others listed.
+     * Several strong candidates can remain, e.g. 23 no-clan players named "mbg"/"MBG"/"Mbg".
+     *
+     * 1. Recency: the opponent is playing right now, so their newest battle ended minutes ago. The
+     *    battle logs of up to [MAX_RECENCY_CHECKS] tied players are read ([RECENCY_CONCURRENCY] at
+     *    a time). Exactly one player active in the last [ACTIVE_WINDOW_SEC] is a strong match.
+     * 2. Among several active players (or all checked, when none is active), the profiles of up to
+     *    [MAX_TIE_PROFILES] are compared with what the screen showed (ranked league, else trophies);
+     *    exactly one agreeing player is a strong match.
+     * 3. Otherwise the most recently active player is a best guess (never cached as the answer for
+     *    this reading) with the others listed.
      */
     private suspend fun decide(ctx: Ctx, strongs: List<Scored>, strategy: String): LookupResult {
         val best = strongs.maxBy { it.score }
         val tied = strongs.filter { it.score >= best.score - TIE_MARGIN }.sortedByDescending { it.score }
         if (tied.size == 1) return finish(ctx, best, strategy, alternatives(ctx, best), strong = true)
         ctx.log("${tied.size} players fit equally (${ctx.hint.describe()}): " + tied.take(8).joinToString { "'${it.hit.name}' #${it.hit.tag}" })
-        val checked = tied.take(MAX_TIE_PROFILES)
+        val checked = tied.take(MAX_RECENCY_CHECKS)
+        val nowSec = clock() / 1000
+        val rec = byRecency(checked, lastBattleTimes(ctx, checked), nowSec)
+        ctx.log("recency: " + describeRecency(rec, nowSec) + if (tied.size > checked.size) " (${tied.size - checked.size} more not checked)" else "")
+        fun others(pick: Scored) = (tied.filter { it.hit.tag != pick.hit.tag }.map { it.hit } + alternatives(ctx, best))
+            .filter { it.tag != pick.hit.tag }.distinctBy { it.tag }.take(5)
+        val window = "${ACTIVE_WINDOW_SEC / 60} min"
+        if (rec.active.size == 1) {
+            val pick = rec.active.single()
+            ctx.log("recency: only #${pick.hit.tag} played in the last $window; decisive")
+            return finish(
+                ctx, pick, strategy, others(pick), strong = true,
+                note = "The only one of ${tied.size} players named like this who played in the last $window.",
+            )
+        }
+        // Several active: only they are still in the running; none active: everyone checked.
+        val pool = if (rec.active.size >= 2) rec.active else rec.ordered
+        val profiled = pool.take(MAX_TIE_PROFILES)
         if (ctx.hint.league != null || ctx.hint.trophies != null) {
-            for (c in checked) {
+            for (c in profiled) {
                 if (ctx.cloudflareBlocked) break
                 try {
                     RoyaleApiWeb.parseProfile(http.getHtml(RoyaleApiWeb.playerUrl(c.hit.tag)), c.hit.tag)?.let { ctx.profiles[c.hit.tag] = it }
@@ -319,28 +347,103 @@ class LookupChain(
                 ctx.profiles[c.hit.tag]?.let { p -> ctx.log("tie-break: #${c.hit.tag} League ${p.league ?: "?"}, ${p.trophies ?: "?"} trophies") }
             }
         }
-        val agreeing = tieBreak(checked, ctx.profiles, ctx.hint)
-        val others = (tied - agreeing.toSet()).map { it.hit } + alternatives(ctx, best).filter { a -> tied.none { it.hit.tag == a.tag } }
+        val agreeing = tieBreak(profiled, ctx.profiles, ctx.hint)
+        val among = if (rec.active.size >= 2) "${rec.active.size} players active in the last $window" else "${tied.size} players named like this"
         if (agreeing.size == 1) {
             val pick = agreeing.single()
-            ctx.log("tie-break: only #${pick.hit.tag} matches ${ctx.hint.describe()}")
-            return finish(ctx, pick, strategy, others.take(5), strong = true, note = "Matched by ${ctx.hint.describe()} among ${tied.size} players named like this.")
+            ctx.log("tie-break: only #${pick.hit.tag} matches ${ctx.hint.describe()} among $among")
+            return finish(ctx, pick, strategy, others(pick), strong = true, note = "Matched by ${ctx.hint.describe()} among $among.")
         }
-        // No profile agrees: a ranked player with the most trophies is a better guess than an
-        // abandoned level-1 account with the same name.
-        val pick = agreeing.firstOrNull()
-            ?: checked.filter { ctx.profiles[it.hit.tag]?.league != null }.maxByOrNull { ctx.profiles[it.hit.tag]?.trophies ?: 0 }
+        // Undecided: the most recently active player (of those agreeing, if several agree) is the
+        // best guess; without any battle times, a ranked player with the most trophies.
+        val inRunning = agreeing.ifEmpty { pool }.map { it.hit.tag }.toSet()
+        val pick = rec.ordered.firstOrNull { it.hit.tag in inRunning && rec.times[it.hit.tag] != null }
+            ?: agreeing.firstOrNull()
+            ?: pool.filter { ctx.profiles[it.hit.tag]?.league != null }.maxByOrNull { ctx.profiles[it.hit.tag]?.trophies ?: 0 }
             ?: best
-        val why = when {
-            ctx.hint.league == null && ctx.hint.trophies == null -> "no league or trophies on screen to tell them apart"
-            agreeing.isEmpty() -> "none of the ${checked.size} checked matched ${ctx.hint.describe()}"
-            else -> "${agreeing.size} of them match ${ctx.hint.describe()}"
-        }
-        ctx.log("tie-break: undecided ($why); best guess #${pick.hit.tag}")
+        val why = listOf(
+            if (rec.active.isEmpty()) "none played in the last $window" else "${rec.active.size} played in the last $window",
+            when {
+                ctx.hint.league == null && ctx.hint.trophies == null -> "no league or trophies on screen"
+                agreeing.isEmpty() -> "none of the ${profiled.size} checked matched ${ctx.hint.describe()}"
+                else -> "${agreeing.size} match ${ctx.hint.describe()}"
+            },
+        ).joinToString(", ")
+        val last = rec.times[pick.hit.tag]?.let { BattleLog.relative(it, nowSec) }
+        ctx.log("tie-break: undecided ($why); best guess #${pick.hit.tag}" + (last?.let { ", last battle $it" } ?: ""))
         return finish(
-            ctx, pick, strategy, (tied.filter { it.hit.tag != pick.hit.tag }.map { it.hit } + others).distinctBy { it.tag }.take(5),
-            strong = false, note = "${tied.size} players named like this fit; $why.",
+            ctx, pick, strategy, others(pick), strong = false,
+            note = "${tied.size} players named like this fit; $why" + (last?.let { "; picked the one whose last battle was $it" } ?: "") + ".",
         )
+    }
+
+    /**
+     * Several equally good weak candidates (e.g. a misread clan): if any of them played in the
+     * last [ACTIVE_WINDOW_SEC], the most recent one is the better guess. Never makes it strong.
+     */
+    private suspend fun weakTieByRecency(ctx: Ctx, best: Scored): Scored {
+        val tied = ctx.candidates.values.filter { it.score >= best.score - TIE_MARGIN && it.nameSim >= MIN_NAME_SIM }
+            .sortedByDescending { it.score }
+        if (tied.size <= 1) return best
+        val checked = tied.take(MAX_RECENCY_CHECKS)
+        val nowSec = clock() / 1000
+        val rec = byRecency(checked, lastBattleTimes(ctx, checked), nowSec)
+        ctx.log("recency (${tied.size} weak candidates tie): " + describeRecency(rec, nowSec))
+        val active = rec.active.firstOrNull() ?: return best
+        if (active.hit.tag != best.hit.tag) ctx.log("recency: #${active.hit.tag} played most recently; using it instead")
+        return active
+    }
+
+    /**
+     * Newest battle time (epoch s) of each candidate, from the official battle log with a token,
+     * else the royaleapi.com battles page; at most [RECENCY_CONCURRENCY] requests at a time. The
+     * parsed battles are kept in [Ctx.battles] so the chosen player's decks need no second fetch.
+     */
+    private suspend fun lastBattleTimes(ctx: Ctx, cands: List<Scored>): Map<String, Long?> {
+        if (ctx.token == null && ctx.cloudflareBlocked) return emptyMap()
+        val gate = Semaphore(RECENCY_CONCURRENCY)
+        val t0 = clock()
+        val out = coroutineScope {
+            cands.map { c ->
+                async {
+                    gate.withPermit {
+                        val tag = c.hit.tag
+                        val cached = ctx.battles[tag]
+                        val battles = cached ?: try {
+                            fetchBattles(ctx, tag)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: CloudflareBlockedException) {
+                            ctx.cloudflareBlocked = true
+                            null
+                        } catch (e: Exception) {
+                            ctx.log("recency: battles of #$tag failed: ${e.message}")
+                            null
+                        }
+                        if (battles != null && cached == null) ctx.battles[tag] = battles
+                        tag to battles?.mapNotNull { it.time }?.maxOrNull()
+                    }
+                }
+            }.map { it.await() }
+        }.toMap()
+        ctx.log("recency: ${out.count { it.value != null }} of ${cands.size} battle logs read in ${clock() - t0} ms")
+        return out
+    }
+
+    /** Battles newest first: official API with a token (else, or on failure, royaleapi.com). */
+    private suspend fun fetchBattles(ctx: Ctx, tag: String): List<LastBattle> {
+        ctx.token?.let { token ->
+            try {
+                val b = BattleLog.fromApiAll(api.battleLog(tag, token), tag)
+                if (b.isNotEmpty()) return b
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ctx.log("recency: official battle log of #$tag failed: ${e.message}")
+            }
+        }
+        if (ctx.cloudflareBlocked) return emptyList()
+        return BattleLog.parseRoyaleApiBattles(http.getHtml(RoyaleApiWeb.battlesUrl(tag)), tag)
     }
 
     /**
@@ -462,6 +565,20 @@ class LookupChain(
      * 5 battles), topped up from the player's Decks tab when that gives fewer than [MAX_DECKS].
      */
     private suspend fun fetchDecks(ctx: Ctx, tag: String): Result<DeckInfo> {
+        ctx.battles[tag]?.takeIf { it.isNotEmpty() }?.let { battles ->
+            var decks = BattleLog.uniqueDecks(battles, MAX_DECKS)
+            if (decks.size < MAX_DECKS && battles.first().source.startsWith("royaleapi")) {
+                try {
+                    decks = BattleLog.uniqueDecks(battles, MAX_DECKS, BattleLog.parseRoyaleApiDecksTab(http.getHtml(RoyaleApiWeb.decksUrl(tag))))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ctx.log("battle: decks tab failed: ${e.message}")
+                }
+            }
+            ctx.log("battle: reused the ${battles.size} battles read for the recency check (${decks.size} unique decks)")
+            return Result.success(DeckInfo(battles.first(), decks))
+        }
         ctx.token?.let { token ->
             try {
                 val battles = BattleLog.fromApiAll(api.battleLog(tag, token), tag)
@@ -547,6 +664,36 @@ class LookupChain(
         /** Candidates within this score of the best are treated as tied. */
         const val TIE_MARGIN = 0.02
         const val MAX_TIE_PROFILES = 4
+        /** Tied candidates whose battle logs are read for the recency tie-break. */
+        const val MAX_RECENCY_CHECKS = 12
+        const val RECENCY_CONCURRENCY = 4
+        /** A last battle at most this old (s) means the player is probably the opponent on screen. */
+        const val ACTIVE_WINDOW_SEC = 15 * 60L
+        /** Phone and server clocks may disagree a little: battles this far "in the future" still count. */
+        const val CLOCK_SKEW_SEC = 5 * 60L
+
+        /** [ordered]: newest last battle first, unknown times last; [active]: last battle within the window. */
+        data class Recency(val ordered: List<Scored>, val active: List<Scored>, val times: Map<String, Long?>)
+
+        fun byRecency(cands: List<Scored>, times: Map<String, Long?>, nowSec: Long, windowSec: Long = ACTIVE_WINDOW_SEC): Recency {
+            val ordered = cands.withIndex()
+                .sortedWith(
+                    compareBy<IndexedValue<Scored>> { times[it.value.hit.tag] == null }
+                        .thenByDescending { times[it.value.hit.tag] ?: 0L }
+                        .thenBy { it.index }
+                )
+                .map { it.value }
+            val active = ordered.filter { c ->
+                val t = times[c.hit.tag] ?: return@filter false
+                nowSec - t <= windowSec && t - nowSec <= CLOCK_SKEW_SEC
+            }
+            return Recency(ordered, active, times)
+        }
+
+        /** "#A 2 min ago, #B 3 h ago, #C ?; 1 active in the last 15 min" for the lookup log. */
+        fun describeRecency(r: Recency, nowSec: Long): String =
+            r.ordered.joinToString { "#${it.hit.tag} " + (BattleLog.relative(r.times[it.hit.tag], nowSec) ?: "?") } +
+                "; ${r.active.size} active in the last ${ACTIVE_WINDOW_SEC / 60} min"
         const val TROPHY_TOLERANCE = 30
         const val FALLBACK_SOURCE = "search result only"
         const val STRONG_NAME_SIM = 0.85
