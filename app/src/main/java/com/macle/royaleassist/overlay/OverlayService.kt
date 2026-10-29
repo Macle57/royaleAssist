@@ -93,6 +93,8 @@ class OverlayService : Service() {
     private var hideJob: Job? = null
     private var previewJob: Job? = null
     private var pendingCapture = false
+    /** Fingerprints of the last scanned screen, so a manual correction can update its cache entry. */
+    private var lastScreenKeys: com.macle.royaleassist.cache.ScreenCache.Keys? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -300,6 +302,7 @@ class OverlayService : Service() {
                     deckOnly = p.deckOnly,
                     decksToShow = p.decksToShow,
                     scale = p.scale,
+                    maxWidthDp = overlayMaxWidthDp(resources.displayMetrics.widthPixels / resources.displayMetrics.density, p.scale),
                     onRefresh = { tag -> refreshPlayer(tag) },
                     onOpenWeb = { tag -> openOnRoyaleApi(tag) },
                 )
@@ -334,7 +337,8 @@ class OverlayService : Service() {
         val dm = resources.displayMetrics
         val bubble = scaledDp(56)
         val miniCount = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size
-        val panelW = if (isMiniDeck()) scaledDp(miniDeckWidth(miniCount, prefs.value.scale).value.roundToInt()) else scaledDp(264)
+        val miniW = miniDeckWidthDp(miniCount, miniDeckIconDp(miniCount, maxPanelWidthDp()))
+        val panelW = if (isMiniDeck()) scaledDp(miniW.roundToInt()) else scaledDp(264)
         val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
         val besideX = if (onLeft) bubbleParams.x + bubble + gap else bubbleParams.x - panelW - gap
@@ -350,6 +354,12 @@ class OverlayService : Service() {
             else (bubbleParams.y - scaledDp(300) - gap).coerceAtLeast(0)
         }
         panelRoot?.let { if (it.isAttachedToWindow) wm.updateViewLayout(it, p) }
+    }
+
+    /** Screen width in overlay dp (after the size setting), minus a small margin. */
+    private fun maxPanelWidthDp(): Float {
+        val dm = resources.displayMetrics
+        return overlayMaxWidthDp(dm.widthPixels / dm.density, prefs.value.scale)
     }
 
     /** True while the panel shows only the 8 deck icons (narrower window). */
@@ -497,10 +507,26 @@ class OverlayService : Service() {
             }
             val tCapture = System.currentTimeMillis() - t0
             val region = app.settings.currentScanRegion()
+            val save = app.settings.saveScans.first()
+            lastScreenKeys = null
+            // Same screen as an earlier tap (same name/clan pixels)? Show that result at once.
+            val tHash0 = System.currentTimeMillis()
+            val hit = try {
+                withContext(Dispatchers.Default) { app.screenCache.find(bmp) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                L.w("service: screen cache lookup failed: ${e.message}")
+                null
+            }
+            val tHash = System.currentTimeMillis() - tHash0
+            if (hit != null) {
+                showScreenHit(bmp, region, hit, tCapture, tHash, System.currentTimeMillis() - t0, save, keepPinned)
+                return
+            }
             val fallback = app.settings.fullScreenFallback.first()
             val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(bmp, region, exclude, fallback) }
             val name = ocr.pick.name
-            val save = app.settings.saveScans.first()
             if (name == null) {
                 if (save) app.recorder.record(bmp, region, ocr, null, mapOf("capture" to tCapture, "ocr" to ocr.millis), "no name found")
                 showPanel(PanelState.NotFound("No name in the scan region. Long-press the bubble to adjust it.", ocr.lines), pinRequested = keepPinned)
@@ -510,9 +536,17 @@ class OverlayService : Service() {
             val result = app.analyzer.lookupPick(ocr.pick)
             val total = System.currentTimeMillis() - t0
             L.i("service: scan done in $total ms (ocr ${ocr.millis} ms, ${ocr.mode}${if (ocr.expanded) ", region grown" else ""})")
+            // Remember this screen for an instant answer on the next tap.
+            val keys = if (result?.stats != null) withContext(Dispatchers.Default) { app.screenCache.keysFor(bmp, ocr.pick) } else null
+            lastScreenKeys = keys
+            if (keys != null && result != null) app.appScope.launch { runCatching { app.screenCache.put(keys, result) }.onFailure { L.w("service: screen cache put failed: ${it.message}") } }
             if (save) {
-                val timings = mapOf("capture" to tCapture, "ocr" to ocr.millis, "lookup" to System.currentTimeMillis() - tLookup0, "total" to total)
-                app.appScope.launch { app.recorder.record(bmp, region, ocr, result, timings) }
+                val timings = mapOf("capture" to tCapture, "screenHash" to tHash, "ocr" to ocr.millis, "lookup" to System.currentTimeMillis() - tLookup0, "total" to total)
+                val screen = mapOf(
+                    "hit" to "false",
+                    "stored" to (keys != null && result?.stats != null).toString(),
+                )
+                app.appScope.launch { app.recorder.record(bmp, region, ocr, result, timings, screenCache = screen) }
             }
             val found = result?.stats != null
             showPanel(
@@ -529,6 +563,50 @@ class OverlayService : Service() {
             setOverlaysVisible(true)
             busy.value = false
         }
+    }
+
+    /** Shows the result stored for this screen: no OCR, no network. */
+    private suspend fun showScreenHit(
+        bmp: android.graphics.Bitmap, region: com.macle.royaleassist.ocr.ScanRegion, hit: com.macle.royaleassist.cache.ScreenCache.Hit,
+        tCapture: Long, tHash: Long, total: Long, save: Boolean, keepPinned: Boolean,
+    ) {
+        val e = hit.entity
+        val nameLine = OcrLine(e.nameText, Box(e.nameLeft, e.nameTop, e.nameRight, e.nameBottom), 1f, "screenshot cache")
+        val clanLine = if (e.clanText != null && e.clanLeft != null && e.clanTop != null && e.clanRight != null && e.clanBottom != null) {
+            OcrLine(e.clanText, Box(e.clanLeft, e.clanTop, e.clanRight, e.clanBottom), 1f, "screenshot cache")
+        } else null
+        val pick = com.macle.royaleassist.ocr.NamePick(nameLine, clanLine, reason = "cache hit by screenshot")
+        val why = "cache hit by screenshot: ${hit.describe()}; no OCR, no network"
+        L.i("service: $why, shown in $total ms")
+        val result = hit.result.copy(
+            cached = true, screenHit = true,
+            log = listOf(why) + hit.result.log,
+        )
+        lastScreenKeys = com.macle.royaleassist.cache.ScreenCache.keyOf(e)?.let { com.macle.royaleassist.cache.ScreenCache.Keys(it, e.nameText, e.clanText) }
+        showPanel(PanelState.Result(listOfNotNull(nameLine, clanLine), pick, result), pinRequested = keepPinned)
+        app.appScope.launch { runCatching { app.cache.touch(e.tag, System.currentTimeMillis(), com.macle.royaleassist.cache.PlayerEntity.VIA_SCREENSHOT) } }
+        if (save) {
+            val timings = mapOf("capture" to tCapture, "screenHash" to tHash, "total" to total)
+            val screen = mapOf(
+                "hit" to "true",
+                "entryId" to e.id.toString(),
+                "tag" to e.tag,
+                "nameText" to e.nameText,
+                "nameDistance" to hit.nameDistance.toString(),
+                "clanDistance" to (hit.clanDistance?.toString() ?: "-"),
+                "maxDistance" to com.macle.royaleassist.cache.ScreenHash.MAX_DISTANCE.toString(),
+                "ageSeconds" to (hit.ageMs / 1000).toString(),
+                "storedScreens" to hit.checked.toString(),
+            )
+            app.appScope.launch { app.recorder.record(bmp, region, null, result, timings, "cache hit by screenshot", screenCache = screen) }
+        }
+    }
+
+    /** A manual correction (picked line, refresh) becomes the answer for the last scanned screen. */
+    private fun rememberForLastScreen(r: com.macle.royaleassist.lookup.LookupResult) {
+        val keys = lastScreenKeys ?: return
+        if (r.stats == null) return
+        app.appScope.launch { runCatching { app.screenCache.put(keys, r) } }
     }
 
     /** Opens the player page in the browser; works from the service because we hold the overlay permission. */
@@ -551,6 +629,7 @@ class OverlayService : Service() {
             busy.value = true
             try {
                 val r = cur.result?.let { app.lookup.refresh(it) } ?: app.lookup.refresh(tag)
+                rememberForLastScreen(r)
                 showPanel(
                     if (r.stats != null) PanelState.Result(cur.lines, cur.pick, r)
                     else PanelState.NotFound(r.error ?: "Refresh failed", cur.lines, cur.pick),
@@ -570,6 +649,8 @@ class OverlayService : Service() {
             busy.value = true
             try {
                 val result = app.analyzer.lookupPick(pick)
+                // The user chose this line by hand: that is a confirmed answer for the screen.
+                result?.let { rememberForLastScreen(it.copy(strongMatch = true)) }
                 showPanel(
                     if (result?.stats != null) PanelState.Result(lines, pick, result)
                     else PanelState.NotFound(result?.error ?: "Player not found", lines, pick),

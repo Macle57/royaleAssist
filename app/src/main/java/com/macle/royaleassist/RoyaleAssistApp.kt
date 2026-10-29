@@ -21,7 +21,8 @@ class RoyaleAssistApp : Application() {
     val settings by lazy { Settings(this) }
     val http by lazy { HttpClients(this) }
     val db by lazy { CacheDb.create(this) }
-    val cache by lazy { LookupCache(db.dao()) }
+    val cache by lazy { LookupCache(db.dao()).also { c -> c.onScreenKeysChanged = { screenCache.invalidate() } } }
+    val screenCache by lazy { com.macle.royaleassist.cache.ScreenCache(db.dao()) }
     val lookup by lazy { LookupChain(http, settings, cache) }
     val ocr by lazy { OcrEngine() }
     val tesseract by lazy { TesseractFallback(this) }

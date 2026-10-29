@@ -213,7 +213,17 @@ private fun SetupScreen(app: RoyaleAssistApp) {
                 checked = overlay.deckOnly,
             ) { on -> setOverlay { it.copy(deckOnly = on) } }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Decks to show", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text("Decks side by side", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        when (overlay.decksToShow) {
+                            1 -> "The deck from the last battle."
+                            else -> "The last ${overlay.decksToShow} unique decks, newest on the left; icons shrink to fit the screen."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Royal.Mist,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (1..3).forEach { n -> ChoiceChip("$n", selected = overlay.decksToShow == n) { setOverlay { it.copy(decksToShow = n) } } }
                 }

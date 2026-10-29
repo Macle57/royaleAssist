@@ -57,6 +57,7 @@ data class ScreenHint(
     ).joinToString(", ")
 }
 
+@Serializable
 data class LookupResult(
     val query: String,
     val clanQuery: String?,
@@ -84,6 +85,8 @@ data class LookupResult(
     val fetchedAt: Long? = null,
     val log: List<String> = emptyList(),
     val error: String? = null,
+    /** Answered from the screenshot cache: same screen as an earlier tap, no OCR and no network. */
+    val screenHit: Boolean = false,
 )
 
 @Serializable

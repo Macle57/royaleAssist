@@ -189,7 +189,11 @@ private fun HistoryRow(
                 Text(
                     listOfNotNull(
                         e.trophies?.let { "%,d trophies".format(it) },
-                        "scanned ${CachePolicy.age(e.lastSeenAt, now)}",
+                        "scanned ${CachePolicy.age(e.lastSeenAt, now)}" + when (e.lastVia) {
+                            PlayerEntity.VIA_SCREENSHOT -> " (cache hit by screenshot)"
+                            PlayerEntity.VIA_CACHE -> " (from cache)"
+                            else -> ""
+                        },
                         "seen ${e.seenCount}x",
                     ).joinToString(", "),
                     style = MaterialTheme.typography.labelSmall,

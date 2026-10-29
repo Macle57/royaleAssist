@@ -56,12 +56,14 @@ class ScanRecorder(private val context: Context) {
         result: LookupResult?,
         timings: Map<String, Long>,
         note: String? = null,
+        /** Screenshot cache outcome (hit, distances, stored) for scan.json. */
+        screenCache: Map<String, String>? = null,
     ): File? = withContext(Dispatchers.IO) {
         try {
             val dir = File(scansDir, SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())).apply { mkdirs() }
             File(dir, "frame.jpg").outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 90, it) }
             ocr?.crop?.let { c -> File(dir, "crop.png").outputStream().use { c.compress(Bitmap.CompressFormat.PNG, 100, it) } }
-            File(dir, "scan.json").writeText(json.encodeToString(JsonObject.serializer(), describe(frame, region, ocr, result, timings, note)))
+            File(dir, "scan.json").writeText(json.encodeToString(JsonObject.serializer(), describe(frame, region, ocr, result, timings, note, screenCache)))
             prune()
             L.i("debug: scan saved to ${dir.absolutePath}")
             dir
@@ -88,6 +90,7 @@ class ScanRecorder(private val context: Context) {
 
     private fun describe(
         frame: Bitmap, region: ScanRegion, ocr: OcrOutcome?, r: LookupResult?, timings: Map<String, Long>, note: String?,
+        screenCache: Map<String, String>?,
     ) = buildJsonObject {
         put("time", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date()))
         put("device", "${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})")
@@ -99,6 +102,7 @@ class ScanRecorder(private val context: Context) {
             put("pixels", boxJson(region.toBox(frame.width, frame.height)))
         }
         note?.let { put("note", it) }
+        screenCache?.let { sc -> putJsonObject("screenCache") { sc.forEach { (k, v) -> put(k, v) } } }
         if (ocr != null) {
             put("mode", ocr.mode)
             ocr.scanned?.let { put("scannedBox", boxJson(it)) }
@@ -127,6 +131,8 @@ class ScanRecorder(private val context: Context) {
                 put("confidence", r.confidence)
                 put("strongMatch", r.strongMatch)
                 put("cached", r.cached)
+                put("screenHit", r.screenHit)
+                put("decks", buildJsonArray { r.recentDecks.forEach { d -> add(d.cards.joinToString { it.name }) } })
                 put("error", r.error)
                 put("note", r.note)
                 put("hint", r.hint.describe())

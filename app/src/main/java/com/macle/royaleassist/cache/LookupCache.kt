@@ -68,6 +68,7 @@ class LookupCache(private val dao: CacheDao) {
                 fetchedAt = now,
                 lastSeenAt = now,
                 seenCount = (old?.seenCount ?: 0) + 1,
+                lastVia = PlayerEntity.VIA_LOOKUP,
             )
         )
         if (queryKey != null) dao.upsertQuery(QueryEntity(queryKey, tag, now, CachePolicy.MATCHER_VERSION))
@@ -77,10 +78,10 @@ class LookupCache(private val dao: CacheDao) {
         dao.upsertQuery(QueryEntity(key, tag, now, CachePolicy.MATCHER_VERSION))
     }
 
-    /** Records another sighting of a cached player (cache hit). */
-    suspend fun touch(tag: String, now: Long) {
+    /** Records another sighting of a cached player (cache hit; [via] says which cache). */
+    suspend fun touch(tag: String, now: Long, via: String = PlayerEntity.VIA_CACHE) {
         val old = dao.player(tag) ?: return
-        dao.upsertPlayer(old.copy(lastSeenAt = now, seenCount = old.seenCount + 1))
+        dao.upsertPlayer(old.copy(lastSeenAt = now, seenCount = old.seenCount + 1, lastVia = via))
     }
 
     suspend fun updateDecks(tag: String, battle: LastBattle, decks: List<RecentDeck>) {
@@ -91,13 +92,20 @@ class LookupCache(private val dao: CacheDao) {
     suspend fun delete(tag: String) {
         dao.deletePlayer(tag)
         dao.deleteQueriesFor(tag)
+        dao.deleteScreenKeysFor(tag)
+        onScreenKeysChanged?.invoke()
     }
 
     suspend fun clear() {
         dao.clearPlayers()
         dao.clearQueries()
         dao.clearSearches()
+        dao.clearScreenKeys()
+        onScreenKeysChanged?.invoke()
     }
+
+    /** Lets the in-memory [ScreenCache] drop its copy when entries are deleted here. */
+    var onScreenKeysChanged: (() -> Unit)? = null
 }
 
 /** A history/cache entry as a lookup result, for re-showing it in the panel layout. */

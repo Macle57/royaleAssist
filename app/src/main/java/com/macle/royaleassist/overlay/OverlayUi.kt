@@ -58,6 +58,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import com.macle.royaleassist.R
 import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.cache.CachePolicy
@@ -79,15 +84,21 @@ import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.ui.Royal
 import kotlin.math.roundToInt
 
-/** Minimal deck card: 4 icons of ~46 dp, 3 dp gaps and edge. */
-val MINI_DECK_GAP = 3.dp
-val MINI_DECK_WIDTH = 46.dp * 4 + MINI_DECK_GAP * 5
+/**
+ * Minimal deck card: one line with the matched player's name, then the decks side by side, each
+ * a tight 4x2 grid of icons, separated by a 1 dp line with [MINI_DECK_GAP] on both sides.
+ */
+const val MINI_DECK_GAP_DP = 3f
+val MINI_DECK_GAP = MINI_DECK_GAP_DP.dp
 
-/** With several decks the icons shrink so three decks fit about where one big card was. */
-val MINI_DECK_SMALL_ICON = 32.dp
+/** Preferred icon width (dp) for 1, 2 and 3 decks; smaller when the screen is too narrow. */
+private val MINI_DECK_ICON_DP = floatArrayOf(46f, 38f, 32f)
 
-/** Three decks go side by side (instead of stacked) when the overlay is scaled down this far. */
-const val SIDE_BY_SIDE_MAX_SCALE = 0.85f
+/** Icons never shrink below this (dp), even if the card then needs the full screen width. */
+const val MINI_DECK_MIN_ICON_DP = 20f
+
+/** Margin (dp) kept free on each side of the screen. */
+const val MINI_DECK_SCREEN_MARGIN_DP = 4f
 
 /** Decks shown in the deck view: the recent unique decks, else the newest battle's deck. */
 fun decksFor(r: LookupResult?, n: Int): List<List<DeckCard>> {
@@ -96,11 +107,31 @@ fun decksFor(r: LookupResult?, n: Int): List<List<DeckCard>> {
     return recent.ifEmpty { listOfNotNull(r.lastBattle?.cards) }
 }
 
-/** Width of the minimal deck card for [count] decks. */
-fun miniDeckWidth(count: Int, scale: Float): androidx.compose.ui.unit.Dp = when {
-    count <= 1 -> MINI_DECK_WIDTH
-    scale <= SIDE_BY_SIDE_MAX_SCALE -> (MINI_DECK_SMALL_ICON * 4 + MINI_DECK_GAP * 3) * count + MINI_DECK_GAP * 2 + 1.dp * (count - 1) + MINI_DECK_GAP * 2 * (count - 1)
-    else -> MINI_DECK_SMALL_ICON * 4 + MINI_DECK_GAP * 5
+/** Width (dp) of the minimal deck card holding [count] decks with icons [iconDp] wide. */
+fun miniDeckWidthDp(count: Int, iconDp: Float): Float {
+    val n = count.coerceAtLeast(1)
+    val grid = iconDp * 4 + MINI_DECK_GAP_DP * 3
+    return MINI_DECK_GAP_DP * 2 + grid * n + (n - 1) * (1f + MINI_DECK_GAP_DP * 2)
+}
+
+/** Icon width (dp) so [count] decks side by side fit in [maxWidthDp] (the screen in overlay dp). */
+fun miniDeckIconDp(count: Int, maxWidthDp: Float): Float {
+    val n = count.coerceIn(1, 3)
+    val preferred = MINI_DECK_ICON_DP[n - 1]
+    val fixed = miniDeckWidthDp(n, 0f)
+    val fit = (maxWidthDp - fixed) / (4 * n)
+    return minOf(preferred, fit).coerceAtLeast(MINI_DECK_MIN_ICON_DP)
+}
+
+/** Screen width available to the overlay, in overlay dp ([scale] is the overlay size setting). */
+fun overlayMaxWidthDp(screenWidthDp: Float, scale: Float): Float = screenWidthDp / scale - MINI_DECK_SCREEN_MARGIN_DP * 2
+
+/** "Name · Clan" of the matched player for the deck card; null when nothing was found. */
+fun matchedNameLine(r: LookupResult?): Pair<String, String?>? {
+    if (r == null) return null
+    val name = r.stats?.name ?: r.hit?.name ?: return null
+    val clan = (r.stats?.clanName ?: r.hit?.clanName)?.takeIf { it.isNotBlank() }
+    return name to clan
 }
 
 sealed interface PanelState {
@@ -166,36 +197,35 @@ fun Panel(
     showCloseHint: Boolean = true,
     decksToShow: Int = 3,
     scale: Float = 1f,
+    /** Width the minimal deck card may use, in overlay dp; defaults to the screen width. */
+    maxWidthDp: Float? = null,
 ) {
     val decks = decksFor((state as? PanelState.Result)?.result, decksToShow)
     if (deckOnly && !pinned && decks.isNotEmpty()) {
-        // Minimal transient deck card: only card icons, newest deck first, 1 px separators.
-        // Tap to pin for the full layout.
+        // Minimal transient deck card: the matched name, then the decks side by side (newest
+        // first) with 1 dp separators. Tap to pin for the full layout.
         val mini = RoundedCornerShape(8.dp)
-        val sideBySide = decks.size > 1 && scale <= SIDE_BY_SIDE_MAX_SCALE
-        val iconW = if (decks.size == 1) 46.dp else MINI_DECK_SMALL_ICON
+        val maxW = maxWidthDp ?: overlayMaxWidthDp(LocalConfiguration.current.screenWidthDp.toFloat(), scale)
+        val iconDp = miniDeckIconDp(decks.size, maxW)
+        val iconW = iconDp.dp
         val gridW = iconW * 4 + MINI_DECK_GAP * 3
-        val modifier = Modifier
-            .width(miniDeckWidth(decks.size, scale))
-            .graphicsLayer { this.alpha = alpha }
-            .clip(mini)
-            .background(Royal.Night.copy(alpha = 0.55f))
-            .border(1.dp, Royal.Gold.copy(alpha = 0.3f), mini)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
-            .padding(MINI_DECK_GAP)
         val separatorColor = Royal.Gold.copy(alpha = 0.35f)
-        if (sideBySide) {
-            Row(modifier, horizontalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
+        Column(
+            Modifier
+                .width(miniDeckWidthDp(decks.size, iconDp).dp)
+                .graphicsLayer { this.alpha = alpha }
+                .clip(mini)
+                .background(Royal.Night.copy(alpha = 0.55f))
+                .border(1.dp, Royal.Gold.copy(alpha = 0.3f), mini)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPin)
+                .padding(MINI_DECK_GAP)
+        ) {
+            val r = (state as? PanelState.Result)?.result
+            matchedNameLine(r)?.let { (name, clan) -> MiniNameLine(name, clan, guess = r?.strongMatch == false) }
+            Row(horizontalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
                 decks.forEachIndexed { i, cards ->
                     if (i > 0) Box(Modifier.width(1.dp).height(iconW * 2.4f + MINI_DECK_GAP).background(separatorColor))
                     Box(Modifier.width(gridW)) { DeckGrid(cards, showLevels = false, gap = MINI_DECK_GAP) }
-                }
-            }
-        } else {
-            Column(modifier, verticalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
-                decks.forEachIndexed { i, cards ->
-                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(separatorColor))
-                    DeckGrid(cards, showLevels = false, gap = MINI_DECK_GAP)
                 }
             }
         }
@@ -242,6 +272,23 @@ fun Panel(
     }
 }
 
+/** One compact line over the minimal deck card: name, clan and a "?" for a best guess. */
+@Composable
+private fun MiniNameLine(name: String, clan: String?, guess: Boolean) {
+    val text = buildAnnotatedString {
+        withStyle(SpanStyle(color = Royal.Elixir, fontWeight = FontWeight.SemiBold)) { append(name) }
+        if (clan != null) withStyle(SpanStyle(color = Royal.Mist)) { append("  \u00b7  $clan") }
+        if (guess) withStyle(SpanStyle(color = Royal.Gold)) { append("  ?") }
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = MINI_DECK_GAP),
+    )
+}
+
 @Composable
 private fun NameHeader(name: String, clan: String?, tag: String?) {
     Text(name, style = MaterialTheme.typography.headlineSmall, color = Royal.Elixir, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -273,6 +320,9 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOn
             Text(s.name, style = MaterialTheme.typography.titleMedium, color = Royal.Elixir, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.width(6.dp))
             Text("#${s.tag}", style = MaterialTheme.typography.labelSmall, color = Royal.Gold)
+        }
+        s.clanName?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = Royal.Parchment, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val recent = r.recentDecks.take(decksToShow)
         if (recent.isEmpty()) {
@@ -401,7 +451,8 @@ private fun PinnedExtras(
     val tag = r?.stats?.tag
     r?.fetchedAt?.let { at ->
         Text(
-            (if (r.cached) "Cached, fetched " else "Fetched ") + CachePolicy.age(at, System.currentTimeMillis()),
+            (if (r.screenHit) "Same screen as before (cache hit by screenshot), fetched " else if (r.cached) "Cached, fetched " else "Fetched ") +
+                CachePolicy.age(at, System.currentTimeMillis()),
             style = MaterialTheme.typography.labelSmall,
             color = Royal.Mist,
             modifier = Modifier.padding(top = 4.dp),
