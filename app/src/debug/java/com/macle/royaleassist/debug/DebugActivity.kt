@@ -38,6 +38,9 @@ import java.io.File
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode fullscreen --es image <png>
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode show --es asset 01-royale-king.png
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es name Macle --es clan "Kings & Queens"
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode seed --es name "Royale KiNg" --es clan "Eternal Night" --es tag PVJ28CYGG
+ *     [--es battles <battles.html> --es decks <decks.html>]
+ *     (maps that screen reading to a player already in the cache, so a bubble scan resolves offline)
  *
  * Assets are the repo's samples/ folder (wired in app/build.gradle.kts for debug builds).
  */
@@ -49,6 +52,7 @@ class DebugActivity : Activity() {
         super.onCreate(savedInstanceState)
         val mode = intent.getStringExtra("mode") ?: "full"
         if (mode == "show") { showImage(); return }
+        if (mode == "seed") { seed(); return }
 
         out = TextView(this).apply { setTextColor(Color.WHITE); textSize = 11f; setPadding(24, 80, 24, 24) }
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(out) })
@@ -185,6 +189,30 @@ class DebugActivity : Activity() {
     private suspend fun emit(line: String) {
         L.i(line)
         withContext(Dispatchers.Main) { if (::out.isInitialized) out.append(line + "\n\n") }
+    }
+
+    /** Maps an OCR reading (name, clan or --ez noclan) to a cached tag, for offline overlay tests. */
+    private fun seed() {
+        val name = intent.getStringExtra("name") ?: return finish()
+        val tag = intent.getStringExtra("tag")?.removePrefix("#")?.uppercase() ?: return finish()
+        val clan = intent.getStringExtra("clan")
+        val key = com.macle.royaleassist.cache.CachePolicy.queryKey(name, clan, intent.getBooleanExtra("noclan", false))
+        app.appScope.launch {
+            val cached = app.cache.byTag(tag)
+            if (cached == null) L.i("SEED no cached player #$tag") else {
+                // --es battles <saved royaleapi battles page> [--es decks <saved Decks tab>]: offline decks.
+                intent.getStringExtra("battles")?.let { path ->
+                    val battles = com.macle.royaleassist.lookup.BattleLog.parseRoyaleApiBattles(File(path).readText(), tag)
+                    val tab = intent.getStringExtra("decks")?.let { com.macle.royaleassist.lookup.BattleLog.parseRoyaleApiDecksTab(File(it).readText()) }.orEmpty()
+                    if (battles.isNotEmpty()) {
+                        app.cache.updateDecks(tag, battles.first(), com.macle.royaleassist.lookup.BattleLog.uniqueDecks(battles, 3, tab))
+                    }
+                }
+                app.cache.putQuery(key, tag, System.currentTimeMillis())
+                L.i("SEED '$key' -> #$tag (${cached.entity.name}, ${app.cache.byTag(tag)?.decks?.size ?: 0} decks cached)")
+            }
+            withContext(Dispatchers.Main) { finish() }
+        }
     }
 
     /** Shows one image fullscreen (scaled to fit) so the real bubble -> capture path can be tested. */

@@ -339,6 +339,9 @@ class OverlayService : Service() {
         val miniCount = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size
         val miniW = miniDeckWidthDp(miniCount, miniDeckIconDp(miniCount, maxPanelWidthDp()))
         val panelW = if (isMiniDeck()) scaledDp(miniW.roundToInt()) else scaledDp(264)
+        // An explicit window width: WRAP_CONTENT windows are first measured at the platform's
+        // preferred dialog width (~320 dp), which squeezed the wide side-by-side deck card.
+        p.width = panelW.coerceAtMost(dm.widthPixels)
         val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
         val besideX = if (onLeft) bubbleParams.x + bubble + gap else bubbleParams.x - panelW - gap
