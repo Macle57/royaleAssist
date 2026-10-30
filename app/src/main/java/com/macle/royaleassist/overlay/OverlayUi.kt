@@ -30,6 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -85,17 +87,21 @@ import com.macle.royaleassist.ui.Royal
 import kotlin.math.roundToInt
 
 /**
- * Minimal deck card: one line with the matched player's name, then the decks side by side, each
- * a tight 4x2 grid of icons, separated by a 1 dp line with [MINI_DECK_GAP] on both sides.
+ * Minimal deck card: one line with the matched player's name, then one deck as a tight 4x2 grid
+ * of icons. With more than one recent deck, slim arrow columns on both sides of the grid step
+ * through them (newest first) and the name line ends with "1/3".
  */
 const val MINI_DECK_GAP_DP = 3f
 val MINI_DECK_GAP = MINI_DECK_GAP_DP.dp
 
-/** Preferred icon width (dp) for 1, 2 and 3 decks; smaller when the screen is too narrow. */
-private val MINI_DECK_ICON_DP = floatArrayOf(46f, 38f, 32f)
+/** Preferred icon width (dp); smaller when the screen is too narrow. */
+const val MINI_DECK_ICON_DP = 46f
 
 /** Icons never shrink below this (dp), even if the card then needs the full screen width. */
 const val MINI_DECK_MIN_ICON_DP = 20f
+
+/** Width (dp) of each arrow column beside the grid when the card pages through several decks. */
+const val MINI_DECK_ARROW_DP = 20f
 
 /** Margin (dp) kept free on each side of the screen. */
 const val MINI_DECK_SCREEN_MARGIN_DP = 4f
@@ -107,20 +113,14 @@ fun decksFor(r: LookupResult?, n: Int): List<List<DeckCard>> {
     return recent.ifEmpty { listOfNotNull(r.lastBattle?.cards) }
 }
 
-/** Width (dp) of the minimal deck card holding [count] decks with icons [iconDp] wide. */
-fun miniDeckWidthDp(count: Int, iconDp: Float): Float {
-    val n = count.coerceAtLeast(1)
-    val grid = iconDp * 4 + MINI_DECK_GAP_DP * 3
-    return MINI_DECK_GAP_DP * 2 + grid * n + (n - 1) * (1f + MINI_DECK_GAP_DP * 2)
-}
+/** Width (dp) of the minimal deck card: one deck with icons [iconDp] wide, plus arrows if [paged]. */
+fun miniDeckWidthDp(iconDp: Float, paged: Boolean): Float =
+    MINI_DECK_GAP_DP * 2 + iconDp * 4 + MINI_DECK_GAP_DP * 3 + (if (paged) MINI_DECK_ARROW_DP * 2 else 0f)
 
-/** Icon width (dp) so [count] decks side by side fit in [maxWidthDp] (the screen in overlay dp). */
-fun miniDeckIconDp(count: Int, maxWidthDp: Float): Float {
-    val n = count.coerceIn(1, 3)
-    val preferred = MINI_DECK_ICON_DP[n - 1]
-    val fixed = miniDeckWidthDp(n, 0f)
-    val fit = (maxWidthDp - fixed) / (4 * n)
-    return minOf(preferred, fit).coerceAtLeast(MINI_DECK_MIN_ICON_DP)
+/** Icon width (dp) so the card (with arrows if [paged]) fits in [maxWidthDp] (the screen in overlay dp). */
+fun miniDeckIconDp(maxWidthDp: Float, paged: Boolean): Float {
+    val fit = (maxWidthDp - miniDeckWidthDp(0f, paged)) / 4
+    return minOf(MINI_DECK_ICON_DP, fit).coerceAtLeast(MINI_DECK_MIN_ICON_DP)
 }
 
 /** Screen width available to the overlay, in overlay dp ([scale] is the overlay size setting). */
@@ -199,20 +199,25 @@ fun Panel(
     scale: Float = 1f,
     /** Width the minimal deck card may use, in overlay dp; defaults to the screen width. */
     maxWidthDp: Float? = null,
+    /** Which recent deck is shown (0 = newest); clamped to the decks there are. */
+    deckIndex: Int = 0,
+    /** Steps to an older (+1) or newer (-1) deck; null hides the arrows. */
+    onDeckStep: ((Int) -> Unit)? = null,
 ) {
     val decks = decksFor((state as? PanelState.Result)?.result, decksToShow)
     if (deckOnly && !pinned && decks.isNotEmpty()) {
-        // Minimal transient deck card: the matched name, then the decks side by side (newest
-        // first) with 1 dp separators. Tap to pin for the full layout.
+        // Minimal transient deck card: the matched name, then one deck (newest first). With
+        // several decks, arrows beside the grid step through them. Tap the card to pin it.
         val mini = RoundedCornerShape(8.dp)
+        val paged = decks.size > 1 && onDeckStep != null
+        val page = deckPageIndex(deckIndex, decks.size)
         val maxW = maxWidthDp ?: overlayMaxWidthDp(LocalConfiguration.current.screenWidthDp.toFloat(), scale)
-        val iconDp = miniDeckIconDp(decks.size, maxW)
+        val iconDp = miniDeckIconDp(maxW, paged)
         val iconW = iconDp.dp
         val gridW = iconW * 4 + MINI_DECK_GAP * 3
-        val separatorColor = Royal.Gold.copy(alpha = 0.35f)
         Column(
             Modifier
-                .width(miniDeckWidthDp(decks.size, iconDp).dp)
+                .width(miniDeckWidthDp(iconDp, paged).dp)
                 .graphicsLayer { this.alpha = alpha }
                 .clip(mini)
                 .background(Royal.Night.copy(alpha = 0.55f))
@@ -221,12 +226,31 @@ fun Panel(
                 .padding(MINI_DECK_GAP)
         ) {
             val r = (state as? PanelState.Result)?.result
-            matchedNameLine(r)?.let { (name, clan) -> MiniNameLine(name, clan, guess = r?.strongMatch == false) }
-            Row(horizontalArrangement = Arrangement.spacedBy(MINI_DECK_GAP)) {
-                decks.forEachIndexed { i, cards ->
-                    if (i > 0) Box(Modifier.width(1.dp).height(iconW * 2.4f + MINI_DECK_GAP).background(separatorColor))
-                    Box(Modifier.width(gridW)) { DeckGrid(cards, showLevels = false, gap = MINI_DECK_GAP) }
+            val nameLine = matchedNameLine(r)
+            if (nameLine != null || paged) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = MINI_DECK_GAP),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.weight(1f)) {
+                        nameLine?.let { (name, clan) -> MiniNameLine(name, clan, guess = r?.strongMatch == false) }
+                    }
+                    if (paged) {
+                        Text(
+                            "${page + 1}/${decks.size}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 13.sp),
+                            color = Royal.Gold.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
                 }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val arrow = Modifier.width(MINI_DECK_ARROW_DP.dp).height(iconW * 2.4f)
+                if (paged) DeckArrow(left = true, enabled = page > 0, arrow) { onDeckStep?.invoke(-1) }
+                Box(Modifier.width(gridW)) { DeckGrid(decks[page], showLevels = false, gap = MINI_DECK_GAP) }
+                if (paged) DeckArrow(left = false, enabled = page < decks.size - 1, arrow) { onDeckStep?.invoke(1) }
             }
         }
         return
@@ -265,7 +289,7 @@ fun Panel(
                     state.pick?.name?.let { NameHeader(it.text, state.pick.clan?.text, null) }
                     Text(state.message, color = Royal.Danger, style = MaterialTheme.typography.bodyMedium)
                 }
-                is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned, decksToShow)
+                is PanelState.Result -> ResultContent(state, onVerify, deckOnly, pinned, decksToShow, deckIndex, onDeckStep)
             }
             if (pinned) PinnedExtras(state, onRetry, onPickLine, onVerify, onRefresh, onOpenWeb)
         }
@@ -285,8 +309,28 @@ private fun MiniNameLine(name: String, clan: String?, guess: Boolean) {
         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = MINI_DECK_GAP),
     )
+}
+
+/**
+ * Small chevron that steps through the decks. It always consumes the tap (even at the end, where it
+ * is dimmed and does nothing) so a near miss never pins the card.
+ */
+@Composable
+private fun DeckArrow(left: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (enabled) onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (left) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = if (left) "Newer deck" else "Older deck",
+            tint = Royal.Gold.copy(alpha = if (enabled) 0.7f else 0.18f),
+            modifier = Modifier.size(18.dp),
+        )
+    }
 }
 
 @Composable
@@ -297,7 +341,15 @@ private fun NameHeader(name: String, clan: String?, tag: String?) {
 }
 
 @Composable
-private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOnly: Boolean, pinned: Boolean, decksToShow: Int = 3) {
+private fun ResultContent(
+    state: PanelState.Result,
+    onVerify: () -> Unit,
+    deckOnly: Boolean,
+    pinned: Boolean,
+    decksToShow: Int = 3,
+    deckIndex: Int = 0,
+    onDeckStep: ((Int) -> Unit)? = null,
+) {
     val r = state.result
     val s = r?.stats
     if (r == null || s == null) {
@@ -335,16 +387,31 @@ private fun ResultContent(state: PanelState.Result, onVerify: () -> Unit, deckOn
                 modifier = Modifier.padding(top = 4.dp),
             )
         } else {
-            recent.forEachIndexed { i, d ->
-                Spacer(Modifier.height(if (i == 0) 6.dp else 10.dp))
-                DeckGrid(d.cards)
-                Text(
-                    BattleLog.usageLine(d),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Royal.Mist,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+            // One deck at a time, newest first; the arrows step through the others.
+            val page = deckPageIndex(deckIndex, recent.size)
+            val d = recent[page]
+            if (recent.size > 1 && onDeckStep != null) {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (page == 0) "Newest deck, 1 of ${recent.size}" else "Deck ${page + 1} of ${recent.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Royal.Mist,
+                        modifier = Modifier.weight(1f),
+                    )
+                    DeckArrow(left = true, enabled = page > 0, Modifier.size(28.dp, 24.dp)) { onDeckStep(-1) }
+                    DeckArrow(left = false, enabled = page < recent.size - 1, Modifier.size(28.dp, 24.dp)) { onDeckStep(1) }
+                }
+                Spacer(Modifier.height(2.dp))
+            } else {
+                Spacer(Modifier.height(6.dp))
             }
+            DeckGrid(d.cards)
+            Text(
+                BattleLog.usageLine(d),
+                style = MaterialTheme.typography.labelSmall,
+                color = Royal.Mist,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
         if (!pinned) return
         Spacer(Modifier.height(10.dp))

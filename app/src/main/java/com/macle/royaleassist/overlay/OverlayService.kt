@@ -64,9 +64,11 @@ import kotlin.math.roundToInt
  * mediaProjection type before consent), upgraded to `mediaProjection|specialUse` once the user
  * grants capture consent.
  *
- * Panel lifecycle: results appear compact next to the bubble and hide after [AUTO_HIDE_MS]
- * ("not found" after [NOT_FOUND_HIDE_MS]). Tapping the panel pins it (timer cancelled, line list
- * shown); the close button hides it; tapping the bubble always starts a new scan.
+ * Panel lifecycle: results appear compact next to the bubble and hide after the auto-hide setting
+ * ("not found" after [NOT_FOUND_HIDE_MS]; a deck card after at least [DECK_MIN_SHOW_MS]). Tapping
+ * the panel pins it (timer cancelled, line list shown); the close button hides it; tapping the
+ * bubble always starts a new scan. The deck arrows page through the recent decks ([deckPager]) and
+ * restart the hide timer.
  */
 class OverlayService : Service() {
 
@@ -87,6 +89,8 @@ class OverlayService : Service() {
     private val panel = MutableStateFlow<PanelState>(PanelState.Hidden)
     private val pinned = MutableStateFlow(false)
     private val busy = MutableStateFlow(false)
+    /** Which recent deck the card shows; back to the newest for every new result. */
+    private val deckPager = DeckPager()
     /** Live overlay settings (opacity, size, auto-hide, deck view); DataStore changes apply at once. */
     private val prefs = MutableStateFlow(OverlayPrefs())
     private var job: Job? = null
@@ -145,6 +149,7 @@ class OverlayService : Service() {
             ACTION_CAPTURE -> onBubbleTap()
             ACTION_EDIT_REGION -> scope.launch { showRegionEditor() }
             ACTION_SHOW_REGION -> scope.launch { flashRegion() }
+            ACTION_DEBUG_SHOW -> if (com.macle.royaleassist.BuildConfig.DEBUG) debugPanel?.let { debugPanel = null; showPanel(it) }
         }
         return START_STICKY
     }
@@ -279,6 +284,8 @@ class OverlayService : Service() {
     private fun showPanel(state: PanelState, pinRequested: Boolean = false) {
         hideJob?.cancel()
         val pin = pinRequested || (prefs.value.alwaysPin && state !is PanelState.Hidden)
+        // A new result always starts at the newest deck.
+        deckPager.reset()
         panel.value = state
         if (state is PanelState.Hidden) { removePanel(); return }
         pinned.value = pin
@@ -289,6 +296,7 @@ class OverlayService : Service() {
                 val s by panel.collectAsState()
                 val isPinned by pinned.collectAsState()
                 val p by prefs.collectAsState()
+                val deckIndex by deckPager.index.collectAsState()
                 Scaled(p.scale) {
                 Panel(
                     state = s,
@@ -305,6 +313,8 @@ class OverlayService : Service() {
                     maxWidthDp = overlayMaxWidthDp(resources.displayMetrics.widthPixels / resources.displayMetrics.density, p.scale),
                     onRefresh = { tag -> refreshPlayer(tag) },
                     onOpenWeb = { tag -> openOnRoyaleApi(tag) },
+                    deckIndex = deckIndex,
+                    onDeckStep = { delta -> stepDeck(delta) },
                 )
                 }
             }
@@ -314,14 +324,32 @@ class OverlayService : Service() {
         } else {
             positionPanel()
         }
-        if (!pin) {
-            val full = prefs.value.autoHideSeconds * 1000L
-            val ms = if (state is PanelState.NotFound) minOf(NOT_FOUND_HIDE_MS, full) else full
-            hideJob = scope.launch {
-                delay(ms)
-                if (!pinned.value) showPanel(PanelState.Hidden)
+        if (!pin) scheduleHide()
+    }
+
+    /** (Re)starts the auto-hide timer for the shown, unpinned panel. */
+    private fun scheduleHide() {
+        hideJob?.cancel()
+        val state = panel.value
+        if (state is PanelState.Hidden || pinned.value) return
+        val p = prefs.value
+        val ms = panelHideDelayMs(state, p.autoHideSeconds, showsDeck(state, p.deckOnly, p.decksToShow))
+        L.i("service: panel hides in $ms ms")
+        hideJob = scope.launch {
+            delay(ms)
+            if (!pinned.value) {
+                L.i("service: panel auto-hidden")
+                showPanel(PanelState.Hidden)
             }
         }
+    }
+
+    /** Deck arrow: show an older (+1) or newer (-1) deck and give the user the full time again. */
+    private fun stepDeck(delta: Int) {
+        val count = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size
+        val changed = deckPager.step(delta, count)
+        L.i("service: deck ${deckPager.index.value + 1}/$count${if (changed) "" else " (end)"}")
+        scheduleHide()
     }
 
     private fun pinPanel() {
@@ -336,11 +364,12 @@ class OverlayService : Service() {
         val p = params ?: return
         val dm = resources.displayMetrics
         val bubble = scaledDp(56)
-        val miniCount = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size
-        val miniW = miniDeckWidthDp(miniCount, miniDeckIconDp(miniCount, maxPanelWidthDp()))
+        // One deck at a time; with several decks the card is wider by the two arrow columns.
+        val paged = decksFor((panel.value as? PanelState.Result)?.result, prefs.value.decksToShow).size > 1
+        val miniW = miniDeckWidthDp(miniDeckIconDp(maxPanelWidthDp(), paged), paged)
         val panelW = if (isMiniDeck()) scaledDp(miniW.roundToInt()) else scaledDp(264)
         // An explicit window width: WRAP_CONTENT windows are first measured at the platform's
-        // preferred dialog width (~320 dp), which squeezed the wide side-by-side deck card.
+        // preferred dialog width (~320 dp), which squeezes the content.
         p.width = panelW.coerceAtMost(dm.widthPixels)
         val gap = dp(6)
         val onLeft = bubbleParams.x + bubble / 2 < dm.widthPixels / 2
@@ -686,13 +715,19 @@ class OverlayService : Service() {
         const val ACTION_SHOW_REGION = "com.macle.royaleassist.SHOW_REGION"
         const val ACTION_PROJECTION_GRANTED = "com.macle.royaleassist.PROJECTION_GRANTED"
         const val ACTION_PROJECTION_DENIED = "com.macle.royaleassist.PROJECTION_DENIED"
+        /** Debug builds only: shows [debugPanel] as if a scan had produced it (overlay UI tests). */
+        const val ACTION_DEBUG_SHOW = "com.macle.royaleassist.DEBUG_SHOW"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
-        const val AUTO_HIDE_MS = 6_000L
+        const val AUTO_HIDE_MS = 10_000L
         const val NOT_FOUND_HIDE_MS = 3_500L
         const val REGION_FLASH_MS = 2_500L
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 7
+
+        /** Panel state for [ACTION_DEBUG_SHOW]; set by the debug harness. */
+        @Volatile
+        var debugPanel: PanelState? = null
 
         private val _status = MutableStateFlow(Status())
         val status: StateFlow<Status> = _status.asStateFlow()

@@ -22,15 +22,15 @@ data class OverlayPrefs(
     val bubbleAlpha: Float = 0.7f,
     /** Result panel opacity, 0.3..1. */
     val panelAlpha: Float = 0.95f,
-    /** Seconds before an unpinned result hides, 2..30. */
-    val autoHideSeconds: Int = 6,
+    /** Seconds before an unpinned result hides, 2..30 (deck cards stay at least 10 s). */
+    val autoHideSeconds: Int = 10,
     /** Results stay until closed. */
     val alwaysPin: Boolean = false,
     /** Size of bubble and panel (dp and text), 0.75..1.5. */
     val scale: Float = 1f,
     /** Card shows the opponent's recent decks instead of the stats block. */
     val deckOnly: Boolean = false,
-    /** How many unique recent decks the deck view shows (1..3). */
+    /** How many unique recent decks the deck view pages through (1..3). */
     val decksToShow: Int = 3,
 ) {
     fun normalized() = copy(

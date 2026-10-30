@@ -41,6 +41,9 @@ import java.io.File
  *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode seed --es name "Royale KiNg" --es clan "Eternal Night" --es tag PVJ28CYGG
  *     [--es battles <battles.html> --es decks <decks.html>]
  *     (maps that screen reading to a player already in the cache, so a bubble scan resolves offline)
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode deckcard [--es battles <battles.html>] [--ei count 3]
+ *     (turns the deck view on and shows the overlay deck card with [count] recent decks, no scan or lookup;
+ *     decks come from a saved royaleapi.com battles page, else placeholder cards without icons)
  *
  * Assets are the repo's samples/ folder (wired in app/build.gradle.kts for debug builds).
  */
@@ -53,6 +56,7 @@ class DebugActivity : Activity() {
         val mode = intent.getStringExtra("mode") ?: "full"
         if (mode == "show") { showImage(); return }
         if (mode == "seed") { seed(); return }
+        if (mode == "deckcard") { deckCard(); return }
 
         out = TextView(this).apply { setTextColor(Color.WHITE); textSize = 11f; setPadding(24, 80, 24, 24) }
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(out) })
@@ -212,6 +216,39 @@ class DebugActivity : Activity() {
                 L.i("SEED '$key' -> #$tag (${cached.entity.name}, ${app.cache.byTag(tag)?.decks?.size ?: 0} decks cached)")
             }
             withContext(Dispatchers.Main) { finish() }
+        }
+    }
+
+    /** Shows the overlay deck card for a made-up result, so the card UI can be checked without a scan. */
+    private fun deckCard() {
+        val count = intent.getIntExtra("count", 3).coerceIn(1, 3)
+        app.appScope.launch {
+            val battles = intent.getStringExtra("battles")?.let {
+                com.macle.royaleassist.lookup.BattleLog.parseRoyaleApiBattles(File(it).readText(), "DEMO")
+            }.orEmpty()
+            val decks = if (battles.isNotEmpty()) {
+                com.macle.royaleassist.lookup.BattleLog.uniqueDecks(battles, count)
+            } else {
+                (1..count).map { d ->
+                    com.macle.royaleassist.lookup.RecentDeck((1..8).map { com.macle.royaleassist.lookup.DeckCard("card $d.$it", 11, null) }, "Ladder", null, 1, count)
+                }
+            }
+            val r = LookupResult(
+                "Royale KiNg", "Eternal Night", com.macle.royaleassist.lookup.PlayerHit("Royale KiNg", "PVJ28CYGG", "Eternal Night"), "L1", 1.0,
+                com.macle.royaleassist.lookup.PlayerStats(name = "Royale KiNg", tag = "PVJ28CYGG", clanName = "Eternal Night", trophies = 9000, source = "debug"),
+                strongMatch = true,
+                lastBattle = battles.firstOrNull() ?: com.macle.royaleassist.lookup.LastBattle("Ladder", null, decks.first().cards, "debug"),
+                recentDecks = decks,
+            )
+            val line = com.macle.royaleassist.ocr.OcrLine("Royale KiNg", com.macle.royaleassist.ocr.Box(0, 0, 100, 20), 1f, "debug")
+            app.settings.updateOverlayPrefs { it.copy(deckOnly = true, decksToShow = count) }
+            com.macle.royaleassist.overlay.OverlayService.debugPanel =
+                com.macle.royaleassist.overlay.PanelState.Result(listOf(line), com.macle.royaleassist.ocr.NamePick(line, null, reason = "debug"), r)
+            L.i("DECKCARD showing ${decks.size} decks (${if (battles.isEmpty()) "placeholders" else "from battles page"})")
+            withContext(Dispatchers.Main) {
+                com.macle.royaleassist.overlay.OverlayService.send(this@DebugActivity, com.macle.royaleassist.overlay.OverlayService.ACTION_DEBUG_SHOW)
+                finish()
+            }
         }
     }
 

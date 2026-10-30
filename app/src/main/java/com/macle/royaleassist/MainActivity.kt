@@ -201,6 +201,7 @@ private fun SetupScreen(app: RoyaleAssistApp) {
                 range = 2f..30f,
                 steps = 27,
                 enabled = !overlay.alwaysPin,
+                note = "Deck cards stay at least 10 s; the deck arrows restart the timer.",
             ) { v -> setOverlay { it.copy(autoHideSeconds = v.roundToInt()) } }
             SwitchRow(
                 title = "Always pin",
@@ -214,11 +215,11 @@ private fun SetupScreen(app: RoyaleAssistApp) {
             ) { on -> setOverlay { it.copy(deckOnly = on) } }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("Decks side by side", style = MaterialTheme.typography.bodyMedium)
+                    Text("Recent decks", style = MaterialTheme.typography.bodyMedium)
                     Text(
                         when (overlay.decksToShow) {
                             1 -> "The deck from the last battle."
-                            else -> "The last ${overlay.decksToShow} unique decks, newest on the left; icons shrink to fit the screen."
+                            else -> "The last ${overlay.decksToShow} unique decks, newest first; use the arrows on the card to step through them."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = Royal.Mist,
@@ -416,6 +417,7 @@ private fun SliderRow(
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     enabled: Boolean = true,
+    note: String? = null,
     onChange: (Float) -> Unit,
 ) {
     // Local state keeps dragging smooth; the value is saved when the finger lifts.
@@ -424,6 +426,7 @@ private fun SliderRow(
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Text(valueText, style = MaterialTheme.typography.bodyMedium, color = Royal.Gold)
     }
+    if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = Royal.Mist)
     Slider(
         value = local,
         onValueChange = { local = it },
