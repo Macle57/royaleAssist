@@ -60,3 +60,55 @@ interface ScanArchive {
     /** Shares the debug bundle. */
     suspend fun export()
 }
+
+/** State of screen reading on iOS: the screen broadcast and the picture-in-picture bubble. */
+data class ScreenCaptureStatus(
+    /** The broadcast extension is recording the screen. */
+    val captureRunning: Boolean = false,
+    /** Seconds since the newest captured frame; null when there is none. */
+    val frameAgeSeconds: Long? = null,
+    /** Picture in picture works on this device. */
+    val bubbleSupported: Boolean = true,
+    /** The picture-in-picture bubble is on screen. */
+    val bubbleShown: Boolean = false,
+    /** A scan is running (bubble or "Scan now"). */
+    val scanning: Boolean = false,
+    /** The last problem to show under the steps (the bubble could not start, no frame yet...). */
+    val message: String? = null,
+)
+
+/**
+ * Screen reading where the platform has no overlay windows (iOS): a system screen broadcast keeps
+ * the newest frame, a picture-in-picture window is the bubble and shows the deck. Null on Android
+ * (the setup screen then leaves this section out).
+ */
+interface ScreenCaptureControls {
+    val status: StateFlow<ScreenCaptureStatus>
+
+    /** The result of the last "Scan now", shown in the app until closed. */
+    val lastScan: StateFlow<com.macle.royaleassist.overlay.PanelState>
+
+    /** Which recent deck the in-app result shows (0 = newest). */
+    val deckIndex: StateFlow<Int>
+
+    /** Re-reads the capture state (the setup screen calls it every second while shown). */
+    fun refresh()
+
+    /** Opens the system broadcast sheet (start or stop the screen capture). */
+    fun startCapture()
+
+    fun showBubble()
+
+    fun hideBubble()
+
+    /** Reads the newest captured frame now and shows the result in the app (and in the bubble). */
+    fun scanNow()
+
+    /** The user picked [line] as the name in the in-app result: look that up instead. */
+    fun pickLine(line: com.macle.royaleassist.ocr.OcrLine)
+
+    /** Steps the in-app result to an older (+1) or newer (-1) deck. */
+    fun stepDeck(delta: Int)
+
+    fun clearScan()
+}

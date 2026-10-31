@@ -55,6 +55,8 @@ import com.macle.royaleassist.lookup.OfficialApi
 import com.macle.royaleassist.lookup.ScreenHint
 import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.overlay.DeckGrid
+import com.macle.royaleassist.overlay.Panel
+import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +67,8 @@ import kotlin.math.roundToInt
  * The setup screen: permissions and bubble ([overlay], Android only), overlay look, scan region
  * (Android only), lookup settings and the debug lookup; [scans] adds the saved-scans controls.
  * Without [overlay] (iOS) the intro describes the name lookup and screenshot scan, and the
- * bubble-only rows are hidden.
+ * bubble-only rows are hidden; [capture] (iOS) adds the screen broadcast and picture-in-picture
+ * bubble steps and "Scan now".
  */
 @Composable
 fun SetupScreen(
@@ -74,6 +77,8 @@ fun SetupScreen(
     navigator: AppNavigator,
     overlay: OverlayControls? = null,
     scans: ScanArchive? = null,
+    /** iOS screen reading (broadcast + picture-in-picture bubble); null hides that section. */
+    capture: ScreenCaptureControls? = null,
     /** Extra content under the title (the iOS shell puts its name lookup there). */
     topContent: (@Composable () -> Unit)? = null,
 ) {
@@ -123,11 +128,14 @@ fun SetupScreen(
             }
             Text(
                 if (overlay != null) "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up."
+                else if (capture != null) "Start the screen capture and the bubble, then tap the bubble's play button in a battle: royaleAssist reads the opponent's name off the screen and shows their decks over the game. You can also look up a name or scan a screenshot."
                 else "Look up an opponent by name, or scan a battle screenshot: the name and clan are read on the device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Royal.Mist,
             )
         }
+
+        if (capture != null) CaptureSection(capture, prefs.decksToShow, navigator)
 
         topContent?.invoke()
 
@@ -352,6 +360,86 @@ fun SetupScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * iOS screen reading: start the system screen broadcast, show the picture-in-picture bubble, and
+ * "Scan now" for when royaleAssist itself is on screen next to the game (Split View, Slide Over).
+ */
+@Composable
+private fun CaptureSection(capture: ScreenCaptureControls, decksToShow: Int, navigator: AppNavigator) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val st by capture.status.collectAsState()
+    val result by capture.lastScan.collectAsState()
+    val deckIndex by capture.deckIndex.collectAsState()
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                capture.refresh()
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+    SectionCard("Bubble over the game") {
+        val age = st.frameAgeSeconds
+        Step(
+            done = st.captureRunning,
+            title = if (st.captureRunning) "Screen capture is on" else "Start screen capture",
+            body = "iOS records the screen for royaleAssist while you play; frames stay on the device and only the newest is kept. " +
+                "Tap the button, choose royaleAssist and Start Broadcast. Stop it from Control Center or the red recording pill." +
+                when {
+                    st.captureRunning && age != null -> " Newest frame ${age} s ago."
+                    st.captureRunning -> " No frame yet."
+                    else -> ""
+                },
+            action = (if (st.captureRunning) "Stop or restart capture" else "Start screen capture") to { capture.startCapture() },
+        )
+        Step(
+            done = st.bubbleShown,
+            title = if (st.bubbleShown) "Bubble is on" else "Show the bubble",
+            body = if (!st.bubbleSupported) "Picture in picture is not available on this device."
+            else "A picture-in-picture window floats over the game. In a battle tap it, then play: the opponent is read and their recent decks show for at least 10 s. " +
+                "The skip buttons step through the decks. Drag the window aside or to the edge of the screen to tuck it away.",
+            action = when {
+                !st.bubbleSupported -> null
+                st.bubbleShown -> "Hide bubble" to { capture.hideBubble() }
+                else -> "Show bubble" to { capture.showBubble() }
+            },
+        )
+        Step(
+            done = false,
+            title = "Scan now",
+            body = "With royaleAssist beside the game (Split View or Slide Over), read the newest captured frame here.",
+            action = (if (st.scanning) "Scanning..." else "Scan now") to { if (!st.scanning) capture.scanNow() },
+            last = true,
+        )
+        st.message?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Royal.Gold, modifier = Modifier.padding(top = 10.dp))
+        }
+        val shown = result
+        if (shown != PanelState.Hidden) {
+            Spacer(Modifier.height(12.dp))
+            Panel(
+                state = shown,
+                pinned = true,
+                onPin = {},
+                onClose = { capture.clearScan() },
+                onRetry = { capture.scanNow() },
+                onPickLine = { line -> capture.pickLine(line) },
+                onVerify = {
+                    val q = (shown as? PanelState.Result)?.result?.query ?: (shown as? PanelState.NotFound)?.pick?.name?.text
+                    navigator.openVerify(q)
+                },
+                alpha = 1f,
+                deckOnly = true,
+                onOpenWeb = { navigator.openPlayerPage(it) },
+                showCloseHint = false,
+                decksToShow = decksToShow,
+                deckIndex = deckIndex,
+                onDeckStep = { delta -> capture.stepDeck(delta) },
+            )
+        }
     }
 }
 
