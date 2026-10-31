@@ -36,6 +36,7 @@ import android.net.Uri
 import com.macle.royaleassist.ocr.Box
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
+import com.macle.royaleassist.image.toArgbImage
 import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.ui.RoyalTheme
 import kotlinx.coroutines.CancellationException
@@ -544,8 +545,10 @@ class OverlayService : Service() {
             lastScreenKeys = null
             // Same screen as an earlier tap (same name/clan pixels)? Show that result at once.
             val tHash0 = System.currentTimeMillis()
+            // The shared code works on plain ARGB pixels; one copy of the frame serves the hash, OCR and keys.
+            val frame = withContext(Dispatchers.Default) { bmp.toArgbImage() }
             val hit = try {
-                withContext(Dispatchers.Default) { app.screenCache.find(bmp) }
+                withContext(Dispatchers.Default) { app.screenCache.find(frame) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -558,7 +561,7 @@ class OverlayService : Service() {
                 return
             }
             val fallback = app.settings.fullScreenFallback.first()
-            val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(bmp, region, exclude, fallback) }
+            val ocr = withContext(Dispatchers.Default) { app.analyzer.scan(frame, region, exclude, fallback) }
             val name = ocr.pick.name
             if (name == null) {
                 if (save) app.recorder.record(bmp, region, ocr, null, mapOf("capture" to tCapture, "ocr" to ocr.millis), "no name found")
@@ -570,7 +573,7 @@ class OverlayService : Service() {
             val total = System.currentTimeMillis() - t0
             L.i("service: scan done in $total ms (ocr ${ocr.millis} ms, ${ocr.mode}${if (ocr.expanded) ", region grown" else ""})")
             // Remember this screen for an instant answer on the next tap.
-            val keys = if (result?.stats != null) withContext(Dispatchers.Default) { app.screenCache.keysFor(bmp, ocr.pick) } else null
+            val keys = if (result?.stats != null) withContext(Dispatchers.Default) { app.screenCache.keysFor(frame, ocr.pick) } else null
             lastScreenKeys = keys
             if (keys != null && result != null) app.appScope.launch { runCatching { app.screenCache.put(keys, result) }.onFailure { L.w("service: screen cache put failed: ${it.message}") } }
             if (save) {

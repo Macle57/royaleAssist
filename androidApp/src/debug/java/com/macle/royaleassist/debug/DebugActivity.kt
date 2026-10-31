@@ -16,6 +16,8 @@ import com.macle.royaleassist.RoyaleAssistApp
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.ocr.Prep
 import com.macle.royaleassist.ocr.Preprocess
+import com.macle.royaleassist.image.ArgbImage
+import com.macle.royaleassist.image.toArgbImage
 import com.macle.royaleassist.ocr.ScanRegion
 import kotlinx.coroutines.flow.first
 import com.macle.royaleassist.pipeline.OcrOutcome
@@ -91,13 +93,14 @@ class DebugActivity : Activity() {
             val inputs = loadInputs()
             if (inputs.isEmpty()) emit("RESULT error=no-input (use --es asset, --es image or --ez all true)")
             val fallback = app.settings.fullScreenFallback.first()
-            for ((label, bmp) in inputs) {
+            for ((label, bitmap) in inputs) {
+                val bmp = bitmap.toArgbImage()
                 when (mode) {
                     "variants" -> runVariants(label, bmp)
                     "tessbox" -> {
                         // --es box l,t,r,b (pixels) --es lang kor
                         val b = intent.getStringExtra("box")!!.split(',').map { it.trim().toInt() }
-                        val crop = Bitmap.createBitmap(bmp, b[0], b[1], b[2] - b[0], b[3] - b[1])
+                        val crop = bmp.crop(b[0], b[1], b[2] - b[0], b[3] - b[1])
                         val lang = intent.getStringExtra("lang") ?: "kor"
                         app.tesseract.readWith(crop, lang).forEach { emit("TESSBOX $label $lang: '${it.text}' conf=${it.confidence} ${it.variant}") }
                     }
@@ -134,7 +137,7 @@ class DebugActivity : Activity() {
     }
 
     /** OCR timing: whole screen vs. scan region, after one warm-up run of each. */
-    private suspend fun runBench(label: String, bmp: Bitmap, region: ScanRegion) {
+    private suspend fun runBench(label: String, bmp: ArgbImage, region: ScanRegion) {
         val runs = intent.getIntExtra("runs", 5)
         app.analyzer.ocrAndPick(bmp)
         app.analyzer.scan(bmp, region)
@@ -145,7 +148,7 @@ class DebugActivity : Activity() {
             "region[${stats(reg)} name='${reg.last().pick.name?.text}' clan='${reg.last().pick.clan?.text}' box=${reg.last().scanned}]")
     }
 
-    private suspend fun runVariants(label: String, bmp: Bitmap) {
+    private suspend fun runVariants(label: String, bmp: ArgbImage) {
         for (prep in Prep.entries) {
             val o = app.analyzer.ocrAndPick(bmp, prep = prep, useTesseract = false)
             emitOcr("$label[$prep]", o, null)

@@ -3,6 +3,7 @@ package com.macle.royaleassist.debug
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import com.macle.royaleassist.image.toBitmap
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.macle.royaleassist.L
@@ -62,7 +63,7 @@ class ScanRecorder(private val context: Context) {
         try {
             val dir = File(scansDir, SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())).apply { mkdirs() }
             File(dir, "frame.jpg").outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            ocr?.crop?.let { c -> File(dir, "crop.png").outputStream().use { c.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            ocr?.crop?.let { c -> File(dir, "crop.png").outputStream().use { c.toBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) } }
             File(dir, "scan.json").writeText(json.encodeToString(JsonObject.serializer(), describe(frame, region, ocr, result, timings, note, screenCache)))
             prune()
             L.i("debug: scan saved to ${dir.absolutePath}")

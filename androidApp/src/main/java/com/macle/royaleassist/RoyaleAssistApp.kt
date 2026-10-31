@@ -2,6 +2,8 @@ package com.macle.royaleassist
 
 import android.app.Application
 import com.macle.royaleassist.cache.CacheDb
+import com.macle.royaleassist.cache.create
+import com.macle.royaleassist.image.useSkiaResize
 import com.macle.royaleassist.debug.ScanRecorder
 import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.lookup.HttpClients
@@ -36,6 +38,7 @@ class RoyaleAssistApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        useSkiaResize()
         registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
             private fun counts(a: android.app.Activity) = !a.javaClass.name.contains(".debug.")
             override fun onActivityResumed(a: android.app.Activity) { if (counts(a)) ownScreensResumed++ }

@@ -2,6 +2,7 @@ package com.macle.royaleassist.debug
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import com.macle.royaleassist.image.toArgbImage
 import com.macle.royaleassist.L
 import com.macle.royaleassist.lookup.StringSim
 import com.macle.royaleassist.ocr.ClanText
@@ -51,7 +52,7 @@ class CorpusRunner(private val context: Context, private val analyzer: Analyzer,
             }
             val start = System.currentTimeMillis()
             val o = try {
-                analyzer.scan(bmp, region, exclude = null, fullScreenFallback = false)
+                analyzer.scan(bmp.toArgbImage(), region, exclude = null, fullScreenFallback = false)
             } catch (e: Exception) {
                 L.e("corpus: $file failed", e)
                 emit("CORPUS $file error=${e.message}")

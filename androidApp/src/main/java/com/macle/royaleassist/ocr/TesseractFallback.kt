@@ -1,7 +1,8 @@
 package com.macle.royaleassist.ocr
 
 import android.content.Context
-import android.graphics.Bitmap
+import com.macle.royaleassist.image.ArgbImage
+import com.macle.royaleassist.image.toBitmap
 import com.googlecode.tesseract.android.TessBaseAPI
 import com.macle.royaleassist.L
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +54,7 @@ class TesseractFallback(private val context: Context) : LineReader {
      * Reads a single text line crop with every language and a few binarisations; returns all
      * readings sorted best first (by mean confidence, then script fit).
      */
-    override suspend fun readLine(crop: Bitmap): List<Result> = withContext(Dispatchers.Default) {
+    override suspend fun readLine(crop: ArgbImage): List<Result> = withContext(Dispatchers.Default) {
         mutex.withLock {
             val t0 = System.currentTimeMillis()
             val targetH = 96f
@@ -68,7 +69,7 @@ class TesseractFallback(private val context: Context) : LineReader {
             for (lang in LANGS) {
                 val api = api(lang) ?: continue
                 for ((vName, bmp) in variants) {
-                    api.setImage(bmp)
+                    api.setImage(bmp.toBitmap())
                     val text = cleanEdges(api.utF8Text.orEmpty())
                     val conf = api.meanConfidence()
                     api.clear()
@@ -88,7 +89,7 @@ class TesseractFallback(private val context: Context) : LineReader {
      * Reads one line crop with a single [lang] whose traineddata is already in the tessdata dir
      * (used by the debug harness to try models that are not bundled, e.g. kor).
      */
-    suspend fun readWith(crop: Bitmap, lang: String): List<Result> = withContext(Dispatchers.Default) {
+    suspend fun readWith(crop: ArgbImage, lang: String): List<Result> = withContext(Dispatchers.Default) {
         mutex.withLock {
             dataPath()
             val api = api(lang) ?: return@withLock emptyList()
@@ -96,7 +97,7 @@ class TesseractFallback(private val context: Context) : LineReader {
             val (up, _) = Preprocess.apply(crop, Prep.UPSCALE_GRAY, forcedScale = scale)
             listOf("gray" to up, "bin150" to Preprocess.binarize(up, 150, false), "bin190" to Preprocess.binarize(up, 190, false))
                 .mapNotNull { (v, bmp) ->
-                    api.setImage(bmp)
+                    api.setImage(bmp.toBitmap())
                     val text = api.utF8Text.orEmpty().replace('\n', ' ').trim()
                     val conf = api.meanConfidence()
                     api.clear()

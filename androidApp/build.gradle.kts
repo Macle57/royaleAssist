@@ -64,7 +64,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.savedstate)
-    implementation(libs.androidx.datastore.preferences)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -77,11 +76,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp)
-    implementation(libs.jsoup)
     implementation(libs.coil.compose)
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
 
     implementation(libs.mlkit.text.latin)
     implementation(libs.mlkit.text.chinese)

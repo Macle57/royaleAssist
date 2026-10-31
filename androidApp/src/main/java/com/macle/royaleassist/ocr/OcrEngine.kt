@@ -13,6 +13,8 @@ import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.macle.royaleassist.L
+import com.macle.royaleassist.image.ArgbImage
+import com.macle.royaleassist.image.toBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -57,7 +59,12 @@ class OcrEngine : TextRecognizerBackend {
      */
     suspend fun recognize(bitmap: Bitmap, scale: Float = 1f): List<OcrLine> = recognizeDetailed(bitmap, scale).merged
 
-    override suspend fun recognizeDetailed(bitmap: Bitmap, scale: Float): Recognized {
+    override suspend fun recognizeDetailed(image: ArgbImage, scale: Float): Recognized = recognizeDetailed(image.toBitmap(), scale)
+
+    override suspend fun recognizeRaw(image: ArgbImage, scale: Float, sources: Set<String>?): Map<String, List<OcrLine>> =
+        recognizeRaw(image.toBitmap(), scale, sources)
+
+    suspend fun recognizeDetailed(bitmap: Bitmap, scale: Float): Recognized {
         val t0 = System.currentTimeMillis()
         val raw = recognizeRaw(bitmap, scale)
         val all = raw.values.flatten()
@@ -67,7 +74,7 @@ class OcrEngine : TextRecognizerBackend {
     }
 
     /** Per-recognizer output (all recognizers, or only [sources]). Failures give an empty list. */
-    override suspend fun recognizeRaw(bitmap: Bitmap, scale: Float, sources: Set<String>?): Map<String, List<OcrLine>> = coroutineScope {
+    suspend fun recognizeRaw(bitmap: Bitmap, scale: Float, sources: Set<String>? = null): Map<String, List<OcrLine>> = coroutineScope {
         val image = InputImage.fromBitmap(bitmap, 0)
         recognizers.filter { sources == null || it.first in sources }.map { (source, client) ->
             async {
