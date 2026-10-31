@@ -56,6 +56,10 @@ kotlin {
     }
 
     sourceSets {
+        // Foundation/cinterop APIs (NSString, NSSearchPathForDirectoriesInDomains, ...) on every iOS source set.
+        matching { it.name.startsWith("ios") }.configureEach {
+            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+        }
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -76,9 +80,6 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.okhttp)
             implementation(libs.coil.compose)
-        }
-        iosMain {
-            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
