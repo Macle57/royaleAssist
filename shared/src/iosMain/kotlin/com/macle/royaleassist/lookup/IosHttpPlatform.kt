@@ -1,5 +1,6 @@
 package com.macle.royaleassist.lookup
 
+import com.macle.royaleassist.L
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.engine.darwin.DarwinHttpRequestException
@@ -36,10 +37,29 @@ class IosHttpPlatform : HttpPlatform {
         NSUserDefaults.standardUserDefaults.setObject(ua, forKey = UA_KEY)
     }
 
-    /** Adds cookies (e.g. `cf_clearance` from WKHTTPCookieStore) to the store NSURLSession uses. */
+    /**
+     * Adds cookies (e.g. `cf_clearance` from WKHTTPCookieStore) to the store NSURLSession uses.
+     * Each one is rebuilt from [VerifyCheck.portableCookieProperties]: WebKit's copy carries a
+     * `StoragePartition`, and a partitioned cookie in NSHTTPCookieStorage is never sent with (or
+     * found by `cookiesForURL` for) a plain NSURLSession request. Older copies of the same cookie,
+     * partitioned ones included, are deleted first.
+     */
     fun importCookies(cookies: List<NSHTTPCookie>) {
         val store = NSHTTPCookieStorage.sharedHTTPCookieStorage
-        cookies.forEach { store.setCookie(it) }
+        cookies.forEach { c ->
+            val props = c.properties.orEmpty().entries.associate { (k, v) -> k.toString() to v }
+            val portable = VerifyCheck.portableCookieProperties(props)
+            val copy = NSHTTPCookie.cookieWithProperties(portable.mapKeys { it.key as Any? })
+            store.cookies.orEmpty().filterIsInstance<NSHTTPCookie>()
+                .filter { it.name == c.name && it.domain == c.domain && it.path == c.path }
+                .forEach { store.deleteCookie(it) }
+            store.setCookie(copy ?: c)
+            L.i(
+                "http: imported cookie ${c.name} domain=${c.domain} path=${c.path} secure=${c.secure} " +
+                    "httpOnly=${c.HTTPOnly} sameSite=${c.sameSitePolicy} expires=${c.expiresDate} " +
+                    "dropped=${props.keys - portable.keys}" + if (copy == null) " (rebuild failed, copied as is)" else "",
+            )
+        }
     }
 
     override fun hasClearanceCookie(): Boolean {
@@ -56,6 +76,16 @@ class IosHttpPlatform : HttpPlatform {
                 // NSURLSession has no separate connect timeout: 15 s without data, 25 s per request.
                 timeoutIntervalForRequest = 15.0
                 timeoutIntervalForResource = 25.0
+            }
+            configureRequest {
+                // Ktor adds an Accept-Charset header that browsers never send (Android strips it too).
+                setValue(null, forHTTPHeaderField = "Accept-Charset")
+                val url = URL
+                if (url?.host == VerifyCheck.HOST) {
+                    val cookies = NSHTTPCookieStorage.sharedHTTPCookieStorage.cookiesForURL(url).orEmpty()
+                        .mapNotNull { (it as? NSHTTPCookie)?.name }
+                    L.i("http: -> ${url.path} UA=${valueForHTTPHeaderField("User-Agent")} cookies=$cookies")
+                }
             }
         }
     }

@@ -28,4 +28,18 @@ object VerifyCheck {
     fun <T> royaleApiCookies(cookies: List<T>, domain: (T) -> String): List<T> = cookies.filter { isRoyaleApiCookie(domain(it)) }
 
     const val CLEARANCE_COOKIE = "cf_clearance"
+
+    /**
+     * NSHTTPCookie property keys that describe a cookie by itself. WebKit's cookies also carry
+     * `StoragePartition` (Cloudflare sets `cf_clearance` as a CHIPS `Partitioned` cookie): a copy
+     * with that key lands in NSHTTPCookieStorage under the partition, where plain NSURLSession
+     * requests (no partition) never find it. The iOS verifier copies only these keys.
+     */
+    val PORTABLE_COOKIE_KEYS: Set<String> = setOf(
+        "Name", "Value", "Domain", "Path", "Secure", "HttpOnly", "Expires", "Max-Age", "SameSite",
+        "Version", "Discard", "Port", "Comment", "CommentURL", "OriginURL", "Created",
+    )
+
+    /** [props] without partition and other WebKit-internal keys (see [PORTABLE_COOKIE_KEYS]). */
+    fun <V> portableCookieProperties(props: Map<String, V>): Map<String, V> = props.filterKeys { it in PORTABLE_COOKIE_KEYS }
 }

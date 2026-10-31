@@ -58,6 +58,19 @@ class IosHooksTest {
     }
 
     @Test
+    fun copiedCookiesLoseTheirStoragePartition() {
+        // Properties of WKWebView's cf_clearance (CHIPS-partitioned) as WKHTTPCookieStore reports them.
+        val webKit = mapOf(
+            "Name" to "cf_clearance", "Value" to "abc", "Domain" to ".royaleapi.com", "Path" to "/",
+            "Secure" to "TRUE", "HttpOnly" to "TRUE", "SameSite" to "none", "Expires" to "2027-10-31",
+            "Created" to "815108656", "StoragePartition" to "https://royaleapi.com",
+        )
+        val copy = VerifyCheck.portableCookieProperties(webKit)
+        assertFalse("StoragePartition" in copy)
+        assertEquals(webKit - "StoragePartition", copy)
+    }
+
+    @Test
     fun deepLinks() {
         assertEquals(DeepLink.Lookup("Macle", null), DeepLink.parse("royaleassist://lookup?name=Macle"))
         assertEquals(DeepLink.Lookup("Royale King", "GLI ARGONAUTI"), DeepLink.parse("royaleassist://lookup?name=Royale%20King&clan=GLI+ARGONAUTI"))
