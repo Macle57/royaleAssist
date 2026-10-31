@@ -18,7 +18,7 @@ import platform.Foundation.timeIntervalSince1970
  * The frames of the screen broadcast. The ReplayKit upload extension (`royaleAssistBroadcast`,
  * SampleHandler.swift) keeps only the newest frame as `frame.jpg` (about 2 per second, longest side
  * 1600 px, written atomically) and its state in `state.txt` ("started|paused|finished <epoch s>")
- * in the shared App Group container. Builds without the App Group (simulator, unsigned) use
+ * in Library/Caches/capture of the shared App Group container. Builds without the App Group (simulator, unsigned) use
  * Library/Caches/capture instead, so a test can drop a frame there.
  */
 object CaptureFrames {
@@ -31,7 +31,8 @@ object CaptureFrames {
 
     val dir: String by lazy {
         val group = NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(APP_GROUP)?.path
-        val d = if (group != null) "$group/capture" else {
+        // Library/Caches: a throwaway frame (and devicectl can reach Library in a group container).
+        val d = if (group != null) "$group/Library/Caches/capture" else {
             val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
             "$caches/capture"
         }

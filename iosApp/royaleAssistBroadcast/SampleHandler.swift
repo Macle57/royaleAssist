@@ -5,8 +5,8 @@ import ReplayKit
 
 /// The screen broadcast for royaleAssist (ReplayKit upload extension). It keeps only the newest
 /// screen frame for the app: about two per second, upright, scaled to at most 1600 px on the long
-/// side, written atomically as `capture/frame.jpg` in the shared App Group container, plus the
-/// broadcast state in `capture/state.txt` ("started|paused|finished <epoch seconds>"). The app's
+/// side, written atomically as `Library/Caches/capture/frame.jpg` in the shared App Group
+/// container, plus the broadcast state in `state.txt` next to it ("started|paused|finished <epoch seconds>"). The app's
 /// bubble reads that file when tapped (CaptureFrames.kt). Extensions get about 50 MB, so there is
 /// no queue: frames that arrive while one is written are dropped.
 final class SampleHandler: RPBroadcastSampleHandler {
@@ -18,7 +18,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         guard let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SampleHandler.appGroup) else {
             return nil
         }
-        let d = group.appendingPathComponent("capture", isDirectory: true)
+        let d = group.appendingPathComponent("Library/Caches/capture", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()
