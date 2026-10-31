@@ -12,6 +12,8 @@ import platform.Foundation.NSHTTPCookieStorage
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLErrorTimedOut
 import platform.Foundation.NSUserDefaults
+import platform.Foundation.setValue
+import platform.Foundation.valueForHTTPHeaderField
 import kotlin.concurrent.Volatile
 
 /**
