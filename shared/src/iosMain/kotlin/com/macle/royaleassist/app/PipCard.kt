@@ -142,7 +142,9 @@ private fun CardContent(v: PipView.Card) {
     }
     val r = (state as? PanelState.Result)?.result
     val notFound = state as? PanelState.NotFound
-    val name = matchedNameLine(r) ?: notFound?.pick?.name?.let { it.text to notFound.pick.clan?.text }
+    // The matched player, else what was read off the screen.
+    val pick = (state as? PanelState.Result)?.pick ?: notFound?.pick
+    val name = matchedNameLine(r) ?: pick?.name?.let { it.text to pick.clan?.text }
     val message = when {
         notFound != null -> notFound.message
         r?.needsVerification == true && r.stats == null -> "RoyaleAPI wants a one-time browser check: open royaleAssist and tap Verify RoyaleAPI."
