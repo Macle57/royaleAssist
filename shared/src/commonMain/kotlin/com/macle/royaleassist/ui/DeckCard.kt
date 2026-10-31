@@ -15,8 +15,9 @@ import com.macle.royaleassist.overlay.decksFor
 
 /**
  * The result card for one lookup outside the Android overlay (iOS picture-in-picture / Slide Over
- * card, history detail): the minimal deck card with its arrows, pinned on tap. [maxWidthDp] is the
- * width the card may use; null uses the window width.
+ * card, quick lookup): the minimal deck card with its arrows, pinned on tap. [maxWidthDp] is the
+ * width the card may use; null uses the window width. [alwaysPinned] shows the pinned card right
+ * away (decks with the arrows above the stats, like the pinned Android card); Close then closes it.
  */
 @Composable
 fun DeckCard(
@@ -29,16 +30,17 @@ fun DeckCard(
     onOpenWeb: ((String) -> Unit)? = null,
     onRefresh: ((String) -> Unit)? = null,
     onClose: () -> Unit = {},
+    alwaysPinned: Boolean = false,
 ) {
     val pager = remember(result) { DeckPager() }
     val deckIndex by pager.index.collectAsState()
-    var pinned by remember(result) { mutableStateOf(false) }
+    var pinned by remember(result) { mutableStateOf(alwaysPinned) }
     val decks = decksFor(result, decksToShow).size
     Panel(
         state = PanelState.Result(emptyList(), NamePick(null, null), result),
         pinned = pinned,
         onPin = { pinned = true },
-        onClose = { if (pinned) pinned = false else onClose() },
+        onClose = { if (pinned && !alwaysPinned) pinned = false else onClose() },
         onRetry = null,
         onPickLine = {},
         onVerify = onVerify,
@@ -46,7 +48,7 @@ fun DeckCard(
         deckOnly = deckOnly,
         onRefresh = onRefresh,
         onOpenWeb = onOpenWeb,
-        showCloseHint = true,
+        showCloseHint = !alwaysPinned,
         decksToShow = decksToShow,
         maxWidthDp = maxWidthDp,
         deckIndex = deckIndex,

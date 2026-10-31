@@ -24,13 +24,16 @@ import androidx.compose.ui.unit.dp
 import com.macle.royaleassist.L
 import com.macle.royaleassist.image.ArgbImage
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.LookupOrigin
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
+import com.macle.royaleassist.overlay.DeckPager
 import com.macle.royaleassist.overlay.Panel
 import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.overlay.PillButton
+import com.macle.royaleassist.overlay.decksFor
 import com.macle.royaleassist.pipeline.Analyzer
 import com.macle.royaleassist.pipeline.OcrOutcome
 import com.macle.royaleassist.settings.OverlayPrefs
@@ -50,8 +53,9 @@ data class ScanRequest(val id: Long, val image: ArgbImage? = null, val label: St
 /**
  * "Scan a screenshot": the platform picks an image ([pickImage] calls back with null when the
  * user cancels or it cannot be read), the [analyzer] reads it like a capture (scan region, region
- * growing, second pass, full-screen fallback) and the result shows in the shared [Panel] with the
- * OCR lines to choose from. A new [request] scans its image right away.
+ * growing, second pass, full-screen fallback) and the result shows in the shared pinned [Panel]
+ * (recent decks with arrows, then the stats; the decks are always fetched, [LookupOrigin.App]) with
+ * the OCR lines to choose from. A new [request] scans its image right away.
  */
 @Composable
 fun ScreenshotScan(
@@ -67,6 +71,12 @@ fun ScreenshotScan(
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var state by remember { mutableStateOf<PanelState>(PanelState.Hidden) }
+    val pager = remember { DeckPager() }
+    val deckIndex by pager.index.collectAsState()
+    fun show(s: PanelState) {
+        pager.reset()
+        state = s
+    }
 
     fun scan(img: ArgbImage, label: String) {
         if (busy) return
@@ -82,15 +92,15 @@ fun ScreenshotScan(
                 val name = o.pick.name
                 if (name == null) {
                     status = "No name found (${o.lines.size} lines, ${o.millis} ms)"
-                    state = PanelState.NotFound("No opponent name in the screenshot.", o.lines)
+                    show(PanelState.NotFound("No opponent name in the screenshot.", o.lines))
                     return@launch
                 }
                 val read = "Read '${name.text}'" + (o.pick.clan?.let { " / '${it.text}'" } ?: "") + " in ${o.millis} ms (${o.mode})"
                 status = "$read; looking up..."
-                val r = analyzer.lookupPick(o.pick)
+                val r = analyzer.lookupPick(o.pick, LookupOrigin.App)
                 status = read
                 L.i("scan: lookup -> '${r?.hit?.name}' #${r?.hit?.tag} via ${r?.strategy} stats=${r?.stats != null} verify=${r?.needsVerification} error=${r?.error}")
-                state = panelFor(r, o.lines, o.pick)
+                show(panelFor(r, o.lines, o.pick))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -113,8 +123,8 @@ fun ScreenshotScan(
         scope.launch {
             busy = true
             try {
-                val r = analyzer.lookupPick(pick)
-                state = panelFor(r, lines, pick)
+                val r = analyzer.lookupPick(pick, LookupOrigin.App)
+                show(panelFor(r, lines, pick))
             } finally {
                 busy = false
             }
@@ -160,11 +170,13 @@ fun ScreenshotScan(
                 deckOnly = true,
                 onRefresh = { _ ->
                     val res = (shown as? PanelState.Result)?.result
-                    if (res != null) scope.launch { state = shown.copy(result = lookup.refresh(res)) }
+                    if (res != null) scope.launch { show(shown.copy(result = lookup.refresh(res, LookupOrigin.App))) }
                 },
                 onOpenWeb = { navigator.openPlayerPage(it) },
                 showCloseHint = false,
                 decksToShow = prefs.decksToShow,
+                deckIndex = deckIndex,
+                onDeckStep = { delta -> pager.step(delta, decksFor((shown as? PanelState.Result)?.result, prefs.decksToShow).size) },
             )
         }
     }

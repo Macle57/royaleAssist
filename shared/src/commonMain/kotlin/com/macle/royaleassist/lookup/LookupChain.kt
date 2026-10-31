@@ -17,6 +17,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
+/** Where a lookup was started; decides whether the recent decks are fetched ([LookupChain.wantsDecks]). */
+enum class LookupOrigin {
+    /** The Android overlay (bubble tap, its card's Refresh) and the debug lookups. */
+    Overlay,
+    /** Typed or scanned in the app (iOS quick lookup and screenshot scan). */
+    App,
+}
+
 /**
  * Turns an OCR'd player name (+ optional clan name) into a player tag and basic stats by trying a
  * chain of strategies. Every strategy yields candidate players; each candidate is scored by name
@@ -218,7 +226,13 @@ class LookupChain(
     suspend fun lookup(name: String, clan: String?, bypassCache: Boolean = false): LookupResult =
         lookup(name, ScreenHint(clan), bypassCache)
 
-    suspend fun lookup(name: String, hint0: ScreenHint, bypassCache: Boolean = false): LookupResult {
+    /**
+     * [origin] decides whether the recent decks are fetched (see [wantsDecks]): the overlay follows
+     * the "Show only recent decks" setting, a lookup started in the app always fetches them.
+     */
+    suspend fun lookup(
+        name: String, hint0: ScreenHint, bypassCache: Boolean = false, origin: LookupOrigin = LookupOrigin.Overlay,
+    ): LookupResult {
         val cleanName = cleanOcrName(name)
         val clan = hint0.clan
         // A clan reading that is really a number (tower HP, level badge) is worse than no clan;
@@ -228,7 +242,7 @@ class LookupChain(
         val hint = hint0.copy(clan = cleanClan, noClan = cleanClan == null && (hint0.noClan || placeholder))
         val key = CachePolicy.queryKey(cleanName, cleanClan, hint.noClan)
         val ctx = Ctx(
-            cleanName, cleanClan, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
+            cleanName, cleanClan, settings.currentToken(), wantsDecks(origin, settings.overlayPrefs.first().deckOnly),
             settings.cacheTtl.first(), bypassCache, key, hint,
         )
         ctx.log("query name='$cleanName' ${hint.describe()} token=${if (ctx.token != null) "yes" else "no"}")
@@ -454,21 +468,24 @@ class LookupChain(
      * Re-runs a lookup for the pinned card's Refresh: a best guess repeats the whole search
      * (bypassing the cache) with the same screen information; a strong match re-fetches its tag.
      */
-    suspend fun refresh(r: LookupResult): LookupResult {
+    suspend fun refresh(r: LookupResult, origin: LookupOrigin = LookupOrigin.Overlay): LookupResult {
         val tag = r.stats?.tag ?: r.hit?.tag
-        if (!r.strongMatch && r.query.isNotBlank()) return lookup(r.query, r.hint.copy(clan = r.clanQuery ?: r.hint.clan), bypassCache = true)
-        return if (tag != null) refresh(tag) else lookup(r.query, r.hint, bypassCache = true)
+        if (!r.strongMatch && r.query.isNotBlank()) {
+            return lookup(r.query, r.hint.copy(clan = r.clanQuery ?: r.hint.clan), bypassCache = true, origin = origin)
+        }
+        return if (tag != null) refresh(tag, origin) else lookup(r.query, r.hint, bypassCache = true, origin = origin)
     }
 
     private fun alternatives(ctx: Ctx, chosen: Scored) =
         ctx.candidates.values.filter { it.hit.tag != chosen.hit.tag }.sortedByDescending { it.score }.take(5).map { it.hit }
 
     /** Re-fetches stats and deck for a known tag, ignoring the cache (the panel's Refresh). */
-    suspend fun refresh(tag: String): LookupResult {
+    suspend fun refresh(tag: String, origin: LookupOrigin = LookupOrigin.Overlay): LookupResult {
         val t = tagNoHash(tag)
         val old = cache?.byTag(t)
         val ctx = Ctx(
-            old?.entity?.name ?: "#$t", old?.entity?.clanName, settings.currentToken(), settings.overlayPrefs.first().deckOnly,
+            old?.entity?.name ?: "#$t", old?.entity?.clanName, settings.currentToken(),
+            wantsDecks(origin, settings.overlayPrefs.first().deckOnly),
             settings.cacheTtl.first(), bypassCache = true, queryKey = null,
         )
         ctx.log("refresh #$t (cache bypassed)")
@@ -664,6 +681,16 @@ class LookupChain(
     }
 
     companion object {
+        /**
+         * Whether a lookup fetches the battle log for the recent decks: always for a lookup the user
+         * started in the app ([LookupOrigin.App]), which shows them on a pinned card; for the overlay
+         * only with the "Show only recent decks" setting ([deckOnlySetting]).
+         */
+        fun wantsDecks(origin: LookupOrigin, deckOnlySetting: Boolean): Boolean = when (origin) {
+            LookupOrigin.App -> true
+            LookupOrigin.Overlay -> deckOnlySetting
+        }
+
         const val MAX_DECKS = 3
         /** Candidates within this score of the best are treated as tied. */
         const val TIE_MARGIN = 0.02

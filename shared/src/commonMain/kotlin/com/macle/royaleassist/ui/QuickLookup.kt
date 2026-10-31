@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.LookupOrigin
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.ScreenHint
 import com.macle.royaleassist.overlay.PillButton
@@ -39,8 +40,9 @@ data class LookupRequest(val name: String, val clan: String?, val id: Long)
 
 /**
  * Manual lookup for platforms without screen reading (iOS for now): type the opponent's name (and
- * clan), get the deck card. Uses the deck settings of the setup screen. A new [request] fills in
- * the fields and runs the lookup.
+ * clan), get the pinned card with the recent decks and the stats. The decks are fetched whatever
+ * "Show only recent decks" says ([LookupOrigin.App]); how many follows the setup screen. A new
+ * [request] fills in the fields and runs the lookup.
  */
 @Composable
 fun QuickLookup(
@@ -60,7 +62,7 @@ fun QuickLookup(
         if (busy || name.isBlank()) return
         scope.launch {
             busy = true
-            val r = lookup.lookup(name.trim(), ScreenHint(clan = clan.trim().ifBlank { null }))
+            val r = lookup.lookup(name.trim(), ScreenHint(clan = clan.trim().ifBlank { null }), origin = LookupOrigin.App)
             result = r
             busy = false
             onResult(r)
@@ -105,8 +107,9 @@ fun QuickLookup(
                 alpha = 1f,
                 onVerify = { navigator.openVerify(r.query) },
                 onOpenWeb = { navigator.openPlayerPage(it) },
-                onRefresh = { _ -> scope.launch { result = lookup.refresh(r) } },
+                onRefresh = { _ -> scope.launch { result = lookup.refresh(r, LookupOrigin.App) } },
                 onClose = { result = null },
+                alwaysPinned = true,
             )
         }
     }

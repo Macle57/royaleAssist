@@ -3,6 +3,7 @@ package com.macle.royaleassist.pipeline
 import com.macle.royaleassist.L
 import com.macle.royaleassist.image.ArgbImage
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.LookupOrigin
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.ocr.Box
 import com.macle.royaleassist.ocr.ColorStats
@@ -264,8 +265,8 @@ class Analyzer(
         return Analysis(o, lookup.lookup(name.text, o.pick.hint()))
     }
 
-    suspend fun lookupPick(pick: NamePick): LookupResult? =
-        pick.name?.let { lookup.lookup(it.text, pick.hint()) }
+    suspend fun lookupPick(pick: NamePick, origin: LookupOrigin = LookupOrigin.Overlay): LookupResult? =
+        pick.name?.let { lookup.lookup(it.text, pick.hint(), origin = origin) }
 
     companion object {
         /** "7あぎったん。" -> "あぎったん": a lone leading digit/symbol stuck to CJK/kana text and trailing 。. */
