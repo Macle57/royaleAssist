@@ -27,8 +27,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
-        # Empty for the simulator; set your (free) Apple ID team to install on a device.
-        DEVELOPMENT_TEAM: ""
+        # Free Apple ID personal team (Aditya Goel); only needed for device installs.
+        DEVELOPMENT_TEAM: 4FJH73S8G8
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Kotlin Multiplatform direct integration (static framework "Shared" from :shared).
