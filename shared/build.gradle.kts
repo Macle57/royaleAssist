@@ -77,6 +77,9 @@ kotlin {
             implementation(libs.okhttp)
             implementation(libs.coil.compose)
         }
+        iosMain {
+            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+        }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqlite.bundled)
