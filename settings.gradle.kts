@@ -18,4 +18,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "royaleAssist"
-include(":app")
+include(":androidApp", ":shared")
