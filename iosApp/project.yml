@@ -1,0 +1,65 @@
+# XcodeGen spec for the iOS/iPadOS app. Regenerate the committed project after editing:
+#   cd iosApp && xcodegen generate
+name: royaleAssist
+options:
+  bundleIdPrefix: com.macle
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  royaleAssist:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: royaleAssist
+    settings:
+      base:
+        PRODUCT_NAME: royaleAssist
+        PRODUCT_BUNDLE_IDENTIFIER: com.macle.royaleassist
+        INFOPLIST_FILE: royaleAssist/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        # Empty for the simulator; set your (free) Apple ID team to install on a device.
+        DEVELOPMENT_TEAM: ""
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Kotlin Multiplatform direct integration (static framework "Shared" from :shared).
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-framework"
+          - "Shared"
+    preBuildScripts:
+      - name: Compile Kotlin Framework
+        basedOnDependencyAnalysis: false
+        shell: /bin/sh
+        script: |
+          if [ "YES" = "$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED" ]; then
+            echo "Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \"YES\""
+            exit 0
+          fi
+          # Xcode's PATH has a newer JDK than Gradle and the Android plugin support; use JDK 21.
+          export JAVA_HOME="${ROYALEASSIST_JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}"
+          # Low-memory defaults for an 8 GB Mac; override with ROYALEASSIST_GRADLE_ARGS.
+          GRADLE_ARGS="${ROYALEASSIST_GRADLE_ARGS:---no-daemon -Dorg.gradle.jvmargs=-Xmx2g --max-workers=1}"
+          cd "$SRCROOT/.."
+          ./gradlew $GRADLE_ARGS :shared:embedAndSignAppleFrameworkForXcode
+schemes:
+  royaleAssist:
+    build:
+      targets:
+        royaleAssist: all
+    run:
+      config: Debug
+    archive:
+      config: Release
