@@ -17,10 +17,14 @@ plugins {
 // folder is generated as a constant, which works on the JVM and in the iOS simulator (it shares the
 // host file system).
 val fixturesPath: String = layout.projectDirectory.dir("src/commonTest/resources").asFile.invariantSeparatorsPath
+// The repo's sample screenshots (the iOS Vision OCR test reads them in the simulator).
+val samplesPath: String = rootProject.layout.projectDirectory.dir("samples").asFile.invariantSeparatorsPath
 val generateFixturePath = tasks.register("generateFixturePath") {
     val out = layout.buildDirectory.dir("generated/fixturePath/kotlin")
     val path = fixturesPath
+    val samples = samplesPath
     inputs.property("path", path)
+    inputs.property("samples", samples)
     outputs.dir(out)
     doLast {
         val f = out.get().file("com/macle/royaleassist/FixturePath.kt").asFile
@@ -28,7 +32,9 @@ val generateFixturePath = tasks.register("generateFixturePath") {
         f.writeText(
             "package com.macle.royaleassist\n\n" +
                 "/** Generated: absolute path of src/commonTest/resources. */\n" +
-                "internal const val FIXTURES_DIR = \"$path\"\n",
+                "internal const val FIXTURES_DIR = \"$path\"\n\n" +
+                "/** Generated: absolute path of the repo's samples folder. */\n" +
+                "internal const val SAMPLES_DIR = \"$samples\"\n",
         )
     }
 }
@@ -120,4 +126,13 @@ dependencies {
     add("kspAndroid", libs.room3.compiler)
     add("kspIosArm64", libs.room3.compiler)
     add("kspIosSimulatorArm64", libs.room3.compiler)
+}
+
+// `-PiosTestDevice=<UDID>` runs the simulator tests on that simulator, which must already be
+// booted, instead of the default device that Kotlin boots and shuts down for the run.
+providers.gradleProperty("iosTestDevice").orNull?.let { dev ->
+    tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+        device.set(dev)
+        standalone.set(false)
+    }
 }
