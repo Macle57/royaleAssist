@@ -147,16 +147,39 @@ object VisionText {
         langs.toSet()
     }
 
-    /** Recognises [cg] with [languages] (unsupported ones dropped; nothing left = no lines). */
-    @OptIn(BetaInteropApi::class)
+    /**
+     * Run Vision on the CPU only. Set while the app is in the background (picture-in-picture
+     * bubble scans): iOS does not let background apps submit GPU work.
+     */
+    @kotlin.concurrent.Volatile
+    var cpuOnly: Boolean = false
+
+    /**
+     * Recognises [cg] with [languages] (unsupported ones dropped; nothing left = no lines). A failed
+     * GPU/Neural Engine run is retried on the CPU.
+     */
     fun recognize(cg: CGImageRef, languages: List<String>): List<VisionLine> {
         val langs = languages.filter { it in supportedLanguages }
         if (langs.isEmpty()) return emptyList()
+        if (cpuOnly) return recognize(cg, langs, cpu = true)
+        return try {
+            recognize(cg, langs, cpu = false)
+        } catch (e: IllegalStateException) {
+            L.w("ocr: Vision failed (${e.message}), retrying on the CPU")
+            recognize(cg, langs, cpu = true)
+        }
+    }
+
+    @OptIn(BetaInteropApi::class)
+    @Suppress("DEPRECATION")
+    private fun recognize(cg: CGImageRef, langs: List<String>, cpu: Boolean): List<VisionLine> {
         return autoreleasepool {
             val req = VNRecognizeTextRequest()
             req.recognitionLevel = VNRequestTextRecognitionLevelAccurate
             req.usesLanguageCorrection = false
             req.recognitionLanguages = langs
+            // Deprecated in iOS 17 in favour of per-stage compute devices, but still honoured.
+            if (cpu) req.usesCPUOnly = true
             val handler = VNImageRequestHandler(cGImage = cg, options = emptyMap<Any?, Any?>())
             memScoped {
                 val err = alloc<ObjCObjectVar<NSError?>>()
