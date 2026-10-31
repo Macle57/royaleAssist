@@ -64,6 +64,8 @@ import kotlin.math.roundToInt
 /**
  * The setup screen: permissions and bubble ([overlay], Android only), overlay look, scan region
  * (Android only), lookup settings and the debug lookup; [scans] adds the saved-scans controls.
+ * Without [overlay] (iOS) the intro describes the name lookup and screenshot scan, and the
+ * bubble-only rows are hidden.
  */
 @Composable
 fun SetupScreen(
@@ -120,7 +122,8 @@ fun SetupScreen(
                 Pill("History", primary = false) { navigator.openHistory() }
             }
             Text(
-                "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up.",
+                if (overlay != null) "Tap the crown bubble in a battle and royaleAssist reads the opponent's name off the screen and looks them up."
+                else "Look up an opponent by name, or scan a battle screenshot: the name and clan are read on the device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Royal.Mist,
             )
@@ -157,7 +160,7 @@ fun SetupScreen(
         }
 
         SectionCard("Overlay") {
-            SliderRow(
+            if (overlay != null) SliderRow(
                 label = "Bubble opacity",
                 value = prefs.bubbleAlpha,
                 valueText = "${(prefs.bubbleAlpha * 100).roundToInt()}%",
