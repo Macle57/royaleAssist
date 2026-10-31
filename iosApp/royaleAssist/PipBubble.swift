@@ -20,8 +20,8 @@ final class PipBubble: NSObject, IosScreenHost {
     let sourceView = PipSourceView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
     private let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
     private var pip: AVPictureInPictureController?
-    private var possibleObservation: NSKeyValueObservation?
-    private var startWhenPossible = false
+    /// Between "will start" and "did start / failed".
+    private var starting = false
     private var lastImage: CGImage?
     private var keepAlive: Timer?
 
@@ -52,18 +52,20 @@ final class PipBubble: NSObject, IosScreenHost {
         // The layer needs a frame before picture in picture can start.
         if let image = IosOverlay.shared.currentImage() { showFrame(image: image) }
         let controller = pip ?? makeController()
-        if controller.isPictureInPictureActive { return }
-        if controller.isPictureInPicturePossible {
-            controller.startPictureInPicture()
-            reportIfNotStarted()
-        } else {
-            startWhenPossible = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                guard let self, self.startWhenPossible else { return }
-                self.startWhenPossible = false
-                IosOverlay.shared.bubbleFailed(reason: "picture in picture did not become available")
-            }
+        if controller.isPictureInPictureActive || starting { return }
+        tryStart(attempt: 0)
+    }
+
+    /// A new controller flips between "possible" and not for a moment after it is made, and a
+    /// start in that gap fails without a delegate call; so retry for a few seconds.
+    private func tryStart(attempt: Int) {
+        guard let controller = pip, !controller.isPictureInPictureActive, !starting else { return }
+        if controller.isPictureInPicturePossible { controller.startPictureInPicture() }
+        guard attempt < 12 else {
+            IosOverlay.shared.bubbleFailed(reason: "picture in picture did not start")
+            return
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.tryStart(attempt: attempt + 1) }
     }
 
     func stopBubble() {
@@ -93,24 +95,8 @@ final class PipBubble: NSObject, IosScreenHost {
         controller.delegate = self
         // Skip buttons instead of a scrubber: they step through the decks.
         controller.requiresLinearPlayback = false
-        possibleObservation = controller.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] c, _ in
-            guard let self, c.isPictureInPicturePossible, self.startWhenPossible else { return }
-            self.startWhenPossible = false
-            DispatchQueue.main.async {
-                c.startPictureInPicture()
-                self.reportIfNotStarted()
-            }
-        }
         pip = controller
         return controller
-    }
-
-    /// Some refusals come without a delegate call (no user gesture, simulator): report those too.
-    private func reportIfNotStarted() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-            guard let self, let pip = self.pip, !pip.isPictureInPictureActive, !self.startWhenPossible else { return }
-            IosOverlay.shared.bubbleFailed(reason: "picture in picture did not start")
-        }
     }
 
     /// Picture in picture needs a playback audio session; mixing keeps the game's sound playing.
@@ -190,7 +176,12 @@ final class PipBubble: NSObject, IosScreenHost {
 }
 
 extension PipBubble: AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) {
+        starting = true
+    }
+
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
+        starting = false
         setKeepAlive(true)
         IosOverlay.shared.bubbleShown(shown: true)
     }
@@ -201,6 +192,7 @@ extension PipBubble: AVPictureInPictureControllerDelegate {
     }
 
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        starting = false
         IosOverlay.shared.bubbleFailed(reason: error.localizedDescription)
     }
 
