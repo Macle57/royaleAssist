@@ -74,8 +74,7 @@ class VerifyActivity : ComponentActivity() {
     private fun checkPassed() {
         if (done) return
         val title = web.title.orEmpty()
-        val url = web.url.orEmpty()
-        if (title.isEmpty() || title.contains("Just a moment", ignoreCase = true) || !url.startsWith(RoyaleApiWeb.BASE)) return
+        if (!VerifyCheck.passed(title, web.url)) return
         done = true
         CookieManager.getInstance().flush()
         val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true

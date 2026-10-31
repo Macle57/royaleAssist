@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,15 +34,20 @@ import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.settings.Settings
 import kotlinx.coroutines.launch
 
+/** A lookup started from outside the card (a `royaleassist://lookup` link); [id] makes repeats distinct. */
+data class LookupRequest(val name: String, val clan: String?, val id: Long)
+
 /**
  * Manual lookup for platforms without screen reading (iOS for now): type the opponent's name (and
- * clan), get the deck card. Uses the deck settings of the setup screen.
+ * clan), get the deck card. Uses the deck settings of the setup screen. A new [request] fills in
+ * the fields and runs the lookup.
  */
 @Composable
 fun QuickLookup(
     lookup: LookupChain,
     settings: Settings,
     navigator: AppNavigator,
+    request: LookupRequest? = null,
     onResult: (LookupResult) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -59,6 +65,12 @@ fun QuickLookup(
             busy = false
             onResult(r)
         }
+    }
+    LaunchedEffect(request) {
+        val q = request ?: return@LaunchedEffect
+        name = q.name
+        clan = q.clan.orEmpty()
+        run()
     }
     val colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Royal.Gold,

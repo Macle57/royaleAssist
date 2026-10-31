@@ -56,6 +56,11 @@ class HttpClients(private val platform: HttpPlatform) {
         return ua
     }
 
+    /** Forgets the cached User-Agent (after the browser verifier handed over a new one). */
+    fun resetUserAgent() {
+        cachedUa = null
+    }
+
     val client: HttpClient by lazy { platform.createClient() }
 
     fun hasClearanceCookie(): Boolean = platform.hasClearanceCookie()
