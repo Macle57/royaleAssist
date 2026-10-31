@@ -18,6 +18,15 @@ targets:
     deploymentTarget: "18.0"
     sources:
       - path: royaleAssist
+    dependencies:
+      # The screen broadcast (ReplayKit upload extension), embedded in PlugIns.
+      - target: royaleAssistBroadcast
+    entitlements:
+      path: royaleAssist/royaleAssist.entitlements
+      properties:
+        # Shared with the broadcast extension: it leaves the newest screen frame there.
+        com.apple.security.application-groups:
+          - group.com.macle.royaleassist
     settings:
       base:
         PRODUCT_NAME: royaleAssist
@@ -54,6 +63,29 @@ targets:
           GRADLE_ARGS="${ROYALEASSIST_GRADLE_ARGS:---no-daemon -Dorg.gradle.jvmargs=-Xmx2g --max-workers=1}"
           cd "$SRCROOT/.."
           ./gradlew $GRADLE_ARGS :shared:embedAndSignAppleFrameworkForXcode
+  royaleAssistBroadcast:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: royaleAssistBroadcast
+    entitlements:
+      path: royaleAssistBroadcast/royaleAssistBroadcast.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.macle.royaleassist
+    settings:
+      base:
+        PRODUCT_NAME: royaleAssistBroadcast
+        PRODUCT_BUNDLE_IDENTIFIER: com.macle.royaleassist.broadcast
+        INFOPLIST_FILE: royaleAssistBroadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4FJH73S8G8
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
 schemes:
   royaleAssist:
     build:

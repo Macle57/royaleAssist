@@ -7,17 +7,50 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3F65610F0D584EA930D2EC21 /* PipBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB384BDB24394AD5A18F5AD /* PipBubble.swift */; };
 		49304486856D918262381279 /* RoyaleAssistApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3554F1CB0E11AA14F7A9A60 /* RoyaleAssistApp.swift */; };
+		504B97C7F97F64C1EF8842DD /* SampleHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5145E0E444F38D316E15566A /* SampleHandler.swift */; };
 		78406357279DD6CDC4904E3D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D2FC25A501054FE77C87C5DF /* Assets.xcassets */; };
+		A05FDF86F84EF94FA3E7D61C /* royaleAssistBroadcast.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 34B35EBADEAA745ACF6A098C /* royaleAssistBroadcast.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A6F26D35D4ACE60D0708332A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0541B4BBC95D327F3CA02C2B /* ContentView.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		04AC25FB820005A7B21131FB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EEF84B16C68B22FC7BC35BE5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60B95FAF724A3BDE95C10E5D;
+			remoteInfo = royaleAssistBroadcast;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E0C9292128F032EE647BD1F3 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A05FDF86F84EF94FA3E7D61C /* royaleAssistBroadcast.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0541B4BBC95D327F3CA02C2B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		0E4AD85E9487CB3772BD10AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		244FDB0FF31A590506791287 /* royaleAssist.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = royaleAssist.entitlements; sourceTree = "<group>"; };
+		27C03C1EDD19922EE72DE059 /* royaleAssistBroadcast.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = royaleAssistBroadcast.entitlements; sourceTree = "<group>"; };
+		34B35EBADEAA745ACF6A098C /* royaleAssistBroadcast.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = royaleAssistBroadcast.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		47EA81ACB48877BB70364928 /* royaleAssist.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = royaleAssist.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5145E0E444F38D316E15566A /* SampleHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleHandler.swift; sourceTree = "<group>"; };
+		6972552A556F4A6DD1AF9BE8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A3554F1CB0E11AA14F7A9A60 /* RoyaleAssistApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoyaleAssistApp.swift; sourceTree = "<group>"; };
 		D2FC25A501054FE77C87C5DF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		DEB384BDB24394AD5A18F5AD /* PipBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipBubble.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -25,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				5E762CDC41CCFA5F43CBE93F /* royaleAssist */,
+				AE9F66DAB0ECB66CD32DBC45 /* royaleAssistBroadcast */,
 				9AB5A519C80EE38369FF4112 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -35,6 +69,8 @@
 				D2FC25A501054FE77C87C5DF /* Assets.xcassets */,
 				0541B4BBC95D327F3CA02C2B /* ContentView.swift */,
 				0E4AD85E9487CB3772BD10AA /* Info.plist */,
+				DEB384BDB24394AD5A18F5AD /* PipBubble.swift */,
+				244FDB0FF31A590506791287 /* royaleAssist.entitlements */,
 				A3554F1CB0E11AA14F7A9A60 /* RoyaleAssistApp.swift */,
 			);
 			path = royaleAssist;
@@ -44,8 +80,19 @@
 			isa = PBXGroup;
 			children = (
 				47EA81ACB48877BB70364928 /* royaleAssist.app */,
+				34B35EBADEAA745ACF6A098C /* royaleAssistBroadcast.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AE9F66DAB0ECB66CD32DBC45 /* royaleAssistBroadcast */ = {
+			isa = PBXGroup;
+			children = (
+				6972552A556F4A6DD1AF9BE8 /* Info.plist */,
+				27C03C1EDD19922EE72DE059 /* royaleAssistBroadcast.entitlements */,
+				5145E0E444F38D316E15566A /* SampleHandler.swift */,
+			);
+			path = royaleAssistBroadcast;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -58,10 +105,12 @@
 				2D0BC4A5BDBB77F5779F3140 /* Compile Kotlin Framework */,
 				5981350791D1CB8FB57F1493 /* Sources */,
 				D215B441A59603FBC7FAC0D7 /* Resources */,
+				E0C9292128F032EE647BD1F3 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				96BBD8212FA3F1B4375FC7F1 /* PBXTargetDependency */,
 			);
 			name = royaleAssist;
 			packageProductDependencies = (
@@ -69,6 +118,23 @@
 			productName = royaleAssist;
 			productReference = 47EA81ACB48877BB70364928 /* royaleAssist.app */;
 			productType = "com.apple.product-type.application";
+		};
+		60B95FAF724A3BDE95C10E5D /* royaleAssistBroadcast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 34C6125AA742FB42EC6449D4 /* Build configuration list for PBXNativeTarget "royaleAssistBroadcast" */;
+			buildPhases = (
+				F53020DA5EB4F47ABF366B02 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = royaleAssistBroadcast;
+			packageProductDependencies = (
+			);
+			productName = royaleAssistBroadcast;
+			productReference = 34B35EBADEAA745ACF6A098C /* royaleAssistBroadcast.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -80,7 +146,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4158F37B10EDB1626E07FA93 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 4FJH73S8G8;
+						ProvisioningStyle = Automatic;
+					};
+					60B95FAF724A3BDE95C10E5D = {
+						DevelopmentTeam = 4FJH73S8G8;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -100,6 +170,7 @@
 			projectRoot = "";
 			targets = (
 				4158F37B10EDB1626E07FA93 /* royaleAssist */,
+				60B95FAF724A3BDE95C10E5D /* royaleAssistBroadcast */,
 			);
 		};
 /* End PBXProject section */
@@ -143,20 +214,62 @@
 			buildActionMask = 2147483647;
 			files = (
 				A6F26D35D4ACE60D0708332A /* ContentView.swift in Sources */,
+				3F65610F0D584EA930D2EC21 /* PipBubble.swift in Sources */,
 				49304486856D918262381279 /* RoyaleAssistApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F53020DA5EB4F47ABF366B02 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				504B97C7F97F64C1EF8842DD /* SampleHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		96BBD8212FA3F1B4375FC7F1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60B95FAF724A3BDE95C10E5D /* royaleAssistBroadcast */;
+			targetProxy = 04AC25FB820005A7B21131FB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		6C8C3B9173BFF439A7FDE163 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = royaleAssistBroadcast/royaleAssistBroadcast.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4FJH73S8G8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = royaleAssistBroadcast/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.macle.royaleassist.broadcast;
+				PRODUCT_NAME = royaleAssistBroadcast;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		86EADC4D94A656499EC80C64 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = royaleAssist/royaleAssist.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -309,9 +422,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = royaleAssist/royaleAssist.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -337,9 +451,42 @@
 			};
 			name = Release;
 		};
+		D3E1FDA5230E55AC097DCF68 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = royaleAssistBroadcast/royaleAssistBroadcast.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4FJH73S8G8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = royaleAssistBroadcast/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.macle.royaleassist.broadcast;
+				PRODUCT_NAME = royaleAssistBroadcast;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		34C6125AA742FB42EC6449D4 /* Build configuration list for PBXNativeTarget "royaleAssistBroadcast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3E1FDA5230E55AC097DCF68 /* Debug */,
+				6C8C3B9173BFF439A7FDE163 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		46CA307D30C549637D1F7949 /* Build configuration list for PBXNativeTarget "royaleAssist" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

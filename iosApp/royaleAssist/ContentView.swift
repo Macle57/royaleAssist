@@ -16,10 +16,12 @@ struct ContentView: View {
     private static let night = Color(red: 0x0C / 255.0, green: 0x18 / 255.0, blue: 0x30 / 255.0)
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomLeading) {
             Self.night.ignoresSafeArea()
             // Compose applies the safe-area and keyboard insets itself.
             ComposeView().ignoresSafeArea()
+            // The picture-in-picture source (the bubble's layer) must sit in the window; 1 x 1 pt.
+            PipSourceHost().frame(width: 1, height: 1).ignoresSafeArea()
         }
         .preferredColorScheme(.dark)
     }
