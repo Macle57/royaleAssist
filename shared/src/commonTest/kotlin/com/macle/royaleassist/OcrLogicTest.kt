@@ -6,6 +6,7 @@ import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.test.Test
 
 class OcrLogicTest {
@@ -42,7 +43,7 @@ class OcrLogicTest {
         assertEquals(Box(0, 60, 648, 384), box)
         val weird = com.macle.royaleassist.ocr.ScanRegion(-0.2f, 0.5f, 0.1f, 0.4f).normalized()
         assertEquals(0f, weird.left)
-        assert(weird.bottom > weird.top && weird.right > weird.left)
+        assertTrue(weird.bottom > weird.top && weird.right > weird.left)
         assertEquals(2f, com.macle.royaleassist.pipeline.Analyzer.regionScale(box))
         assertEquals(3f, com.macle.royaleassist.pipeline.Analyzer.regionScale(Box(0, 0, 400, 120)))
     }
