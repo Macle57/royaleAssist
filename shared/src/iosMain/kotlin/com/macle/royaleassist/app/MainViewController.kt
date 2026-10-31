@@ -37,9 +37,9 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
 
 /**
- * The iOS app shell for SwiftUI (`UIViewControllerRepresentable`): the setup screen with a name
- * lookup and a screenshot scan on top, the history list and the RoyaleAPI check (WKWebView).
- * No bubble or screen reading on iOS yet.
+ * The iOS app shell for SwiftUI (`UIViewControllerRepresentable`): the setup screen with the
+ * screen capture and picture-in-picture bubble ([IosOverlay]), a name lookup and a screenshot scan,
+ * the history list and the RoyaleAPI check (WKWebView).
  */
 fun MainViewController(): UIViewController {
     IosApp.start()
@@ -132,6 +132,7 @@ private fun IosShell(presenter: () -> UIViewController) {
     when (screen) {
         Screen.Setup -> SetupScreen(
             IosApp.settings, IosApp.lookup, navigator,
+            capture = IosOverlay,
             topContent = {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     QuickLookup(IosApp.lookup, IosApp.settings, navigator, request = lookupRequest)
