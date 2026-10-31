@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.macle.royaleassist.L
 import com.macle.royaleassist.image.ArgbImage
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.LookupResult
+import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
 import com.macle.royaleassist.overlay.Panel
@@ -88,8 +90,7 @@ fun ScreenshotScan(
                 val r = analyzer.lookupPick(o.pick)
                 status = read
                 L.i("scan: lookup -> '${r?.hit?.name}' #${r?.hit?.tag} via ${r?.strategy} stats=${r?.stats != null} verify=${r?.needsVerification} error=${r?.error}")
-                state = if (r?.stats != null) PanelState.Result(o.lines, o.pick, r)
-                else PanelState.NotFound(r?.error ?: "Player not found", o.lines, o.pick)
+                state = panelFor(r, o.lines, o.pick)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -113,8 +114,7 @@ fun ScreenshotScan(
             busy = true
             try {
                 val r = analyzer.lookupPick(pick)
-                state = if (r?.stats != null) PanelState.Result(lines, pick, r)
-                else PanelState.NotFound(r?.error ?: "Player not found", lines, pick)
+                state = panelFor(r, lines, pick)
             } finally {
                 busy = false
             }
@@ -169,6 +169,14 @@ fun ScreenshotScan(
         }
     }
 }
+
+/**
+ * The card for a lookup: a result, or a RoyaleAPI block (a result without stats, so the card offers
+ * "Verify RoyaleAPI"), or "not found".
+ */
+private fun panelFor(r: LookupResult?, lines: List<OcrLine>, pick: NamePick): PanelState =
+    if (r != null && (r.stats != null || r.needsVerification)) PanelState.Result(lines, pick, r)
+    else PanelState.NotFound(r?.error ?: "Player not found", lines, pick)
 
 /** Logs every merged line and each recognizer's raw reading (to compare with Android's corpus runs). */
 private fun logOutcome(o: OcrOutcome) {

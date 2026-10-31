@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import okio.Path.Companion.toPath
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUserDomainMask
 
 /**
@@ -62,5 +63,11 @@ object IosApp {
         L.i("app: start (iOS)")
         val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
         CardImages.install(http, diskCacheDir = "$caches/coil3_disk_cache".toPath())
+        // `-openUrl royaleassist://...` launch argument: the same commands as a link, without the
+        // "Open in royaleAssist?" prompt that `simctl openurl` raises (tests, automation).
+        NSUserDefaults.standardUserDefaults.stringForKey(LAUNCH_URL_ARG)?.let { openUrl(it) }
     }
+
+    /** Launch argument (`xcrun simctl launch <udid> com.macle.royaleassist -openUrl <url>`). */
+    const val LAUNCH_URL_ARG = "openUrl"
 }
