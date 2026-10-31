@@ -314,7 +314,7 @@ object IosOverlay : ScreenCaptureControls {
     private fun viewNow(busy: Boolean = isBusy()): PipView = when {
         busy -> PipView.Busy
         panel.value != PanelState.Hidden -> PipView.Card(panel.value, pipPager.index.value, prefs.decksToShow)
-        else -> PipView.Idle(capturing = _status.value.captureRunning)
+        else -> PipView.Idle(capturing = CaptureFrames.isRunning())
     }
 
     /**
