@@ -29,10 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,7 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -72,7 +68,7 @@ import androidx.compose.foundation.layout.FlowRow
 import com.macle.royaleassist.lookup.LastBattle
 import com.macle.royaleassist.lookup.DeckCard
 import com.macle.royaleassist.lookup.LookupResult
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,7 +78,13 @@ import com.macle.royaleassist.lookup.PlayerStats
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.OcrLine
 import com.macle.royaleassist.ocr.ScanRegion
+import com.macle.royaleassist.resources.Res
+import com.macle.royaleassist.resources.ic_bubble
 import com.macle.royaleassist.ui.Royal
+import com.macle.royaleassist.ui.RoyalIcons
+import com.macle.royaleassist.ui.formatGrouped
+import com.macle.royaleassist.util.nowMillis
+import org.jetbrains.compose.resources.painterResource
 import kotlin.math.roundToInt
 
 /**
@@ -150,6 +152,16 @@ sealed interface PanelState {
         }
 }
 
+/**
+ * Width of the window in unscaled dp (was `LocalConfiguration.screenWidthDp`). Inside [Scaled] the
+ * density already includes [scale], so it is divided out again.
+ */
+@Composable
+private fun screenWidthDp(scale: Float): Float {
+    val px = LocalWindowInfo.current.containerSize.width
+    return px / LocalDensity.current.density * scale
+}
+
 /** Scales dp and sp of [content] by [scale] (overlay size setting). */
 @Composable
 fun Scaled(scale: Float, content: @Composable () -> Unit) {
@@ -158,7 +170,7 @@ fun Scaled(scale: Float, content: @Composable () -> Unit) {
 }
 
 @Composable
-fun Bubble(busy: Boolean, icon: Painter, alpha: Float = 0.7f) {
+fun Bubble(busy: Boolean, icon: Painter = painterResource(Res.drawable.ic_bubble), alpha: Float = 0.7f) {
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -210,7 +222,7 @@ fun Panel(
         val mini = RoundedCornerShape(8.dp)
         val paged = decks.size > 1 && onDeckStep != null
         val page = deckPageIndex(deckIndex, decks.size)
-        val maxW = maxWidthDp ?: overlayMaxWidthDp(LocalConfiguration.current.screenWidthDp.toFloat(), scale)
+        val maxW = maxWidthDp ?: overlayMaxWidthDp(screenWidthDp(scale), scale)
         val iconDp = miniDeckIconDp(maxW, paged)
         val iconW = iconDp.dp
         val gridW = iconW * 4 + MINI_DECK_GAP * 3
@@ -247,9 +259,9 @@ fun Panel(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val arrow = Modifier.width(MINI_DECK_ARROW_DP.dp).height(iconW * 2.4f)
-                if (paged) DeckArrow(left = true, enabled = page > 0, arrow) { onDeckStep?.invoke(-1) }
+                if (paged) DeckArrow(left = true, enabled = page > 0, arrow) { onDeckStep(-1) }
                 Box(Modifier.width(gridW)) { DeckGrid(decks[page], showLevels = false, gap = MINI_DECK_GAP) }
-                if (paged) DeckArrow(left = false, enabled = page < decks.size - 1, arrow) { onDeckStep?.invoke(1) }
+                if (paged) DeckArrow(left = false, enabled = page < decks.size - 1, arrow) { onDeckStep(1) }
             }
         }
         return
@@ -273,7 +285,7 @@ fun Panel(
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Royal.Mist, modifier = Modifier.size(18.dp))
+                Icon(RoyalIcons.Close, contentDescription = "Close", tint = Royal.Mist, modifier = Modifier.size(18.dp))
             }
         }
         Column(
@@ -324,7 +336,7 @@ private fun DeckArrow(left: Boolean, enabled: Boolean, modifier: Modifier = Modi
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            if (left) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            if (left) RoyalIcons.ChevronLeft else RoyalIcons.ChevronRight,
             contentDescription = if (left) "Newer deck" else "Older deck",
             tint = Royal.Gold.copy(alpha = if (enabled) 0.7f else 0.18f),
             modifier = Modifier.size(18.dp),
@@ -487,10 +499,10 @@ private fun matchNote(r: LookupResult): String {
 private fun StatRow(s: PlayerStats) {
     val winRate = if (s.wins != null && s.losses != null && s.wins + s.losses > 0) "${s.wins * 100 / (s.wins + s.losses)}%" else null
     val cells = listOfNotNull(
-        s.trophies?.let { "%,d".format(it) to "trophies" },
-        s.bestTrophies?.let { "%,d".format(it) to "best" },
+        s.trophies?.let { formatGrouped(it) to "trophies" },
+        s.bestTrophies?.let { formatGrouped(it) to "best" },
         s.expLevel?.let { "$it" to "level" },
-        winRate?.let { it to "win rate" } ?: s.battleCount?.let { "%,d".format(it) to "games" },
+        winRate?.let { it to "win rate" } ?: s.battleCount?.let { formatGrouped(it) to "games" },
     )
     if (cells.isEmpty()) return
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Royal.Night.copy(alpha = 0.6f)).padding(vertical = 6.dp)) {
@@ -518,7 +530,7 @@ private fun PinnedExtras(
     r?.fetchedAt?.let { at ->
         Text(
             (if (r.screenHit) "Same screen as before (cache hit by screenshot), fetched " else if (r.cached) "Cached, fetched " else "Fetched ") +
-                CachePolicy.age(at, System.currentTimeMillis()),
+                CachePolicy.age(at, nowMillis()),
             style = MaterialTheme.typography.labelSmall,
             color = Royal.Mist,
             modifier = Modifier.padding(top = 4.dp),

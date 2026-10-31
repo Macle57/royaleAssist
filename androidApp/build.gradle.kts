@@ -65,18 +65,12 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.savedstate)
 
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons)
-    debugImplementation(libs.compose.ui.tooling)
+    // Compose (runtime, foundation, ui, material3) and Coil come from :shared (Compose
+    // Multiplatform, which resolves to the Jetpack Compose artifacts on Android).
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.coil.compose)
 
     implementation(libs.mlkit.text.latin)
     implementation(libs.mlkit.text.chinese)

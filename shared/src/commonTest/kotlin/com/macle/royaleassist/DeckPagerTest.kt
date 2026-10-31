@@ -16,10 +16,10 @@ import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.overlay.deckPageIndex
 import com.macle.royaleassist.overlay.panelHideDelayMs
 import com.macle.royaleassist.overlay.showsDeck
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /** The deck card pages through the recent decks (newest first) and stays up at least 10 s. */
 class DeckPagerTest {
@@ -51,12 +51,12 @@ class DeckPagerTest {
     fun stepsWithoutWrapping() {
         val p = DeckPager()
         assertEquals(0, p.index.value)
-        assertFalse("no newer deck than the newest", p.step(-1, 3))
+        assertFalse(p.step(-1, 3), "no newer deck than the newest")
         assertEquals(0, p.index.value)
         assertTrue(p.step(1, 3))
         assertTrue(p.step(1, 3))
         assertEquals(2, p.index.value)
-        assertFalse("no wrap past the oldest", p.step(1, 3))
+        assertFalse(p.step(1, 3), "no wrap past the oldest")
         assertEquals(2, p.index.value)
         assertTrue(p.step(-1, 3))
         assertEquals(1, p.index.value)

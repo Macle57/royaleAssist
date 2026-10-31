@@ -20,7 +20,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.res.painterResource
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.IntentCompat
@@ -38,6 +37,7 @@ import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
 import com.macle.royaleassist.image.toArgbImage
 import com.macle.royaleassist.settings.OverlayPrefs
+import com.macle.royaleassist.ui.OverlayStatus
 import com.macle.royaleassist.ui.RoyalTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -74,7 +74,6 @@ import kotlin.math.roundToInt
  */
 class OverlayService : Service() {
 
-    data class Status(val running: Boolean = false, val capturing: Boolean = false)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var wm: WindowManager
@@ -125,7 +124,7 @@ class OverlayService : Service() {
             }
         }
         addBubble()
-        _status.value = Status(running = true, capturing = false)
+        _status.value = OverlayStatus(running = true, capturing = false)
         scope.launch {
             // Re-run the lookup automatically after the user passed the RoyaleAPI check.
             VerifyActivity.verified.drop(1).collect {
@@ -263,7 +262,7 @@ class OverlayService : Service() {
             setContent {
                 val isBusy by busy.collectAsState()
                 val p by prefs.collectAsState()
-                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, painterResource(R.drawable.ic_bubble), p.bubbleAlpha) } }
+                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, alpha = p.bubbleAlpha) } }
             }
         })
         owner.attach(root)
@@ -708,7 +707,7 @@ class OverlayService : Service() {
         removeWindow(bubbleRoot)
         bubbleRoot = null
         owners.values.forEach { it.destroy() }
-        _status.value = Status(running = false, capturing = false)
+        _status.value = OverlayStatus(running = false, capturing = false)
         L.i("service: destroyed")
         super.onDestroy()
     }
@@ -734,8 +733,8 @@ class OverlayService : Service() {
         @Volatile
         var debugPanel: PanelState? = null
 
-        private val _status = MutableStateFlow(Status())
-        val status: StateFlow<Status> = _status.asStateFlow()
+        private val _status = MutableStateFlow(OverlayStatus())
+        val status: StateFlow<OverlayStatus> = _status.asStateFlow()
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, OverlayService::class.java).setAction(ACTION_START))

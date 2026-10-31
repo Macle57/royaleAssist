@@ -1,14 +1,14 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 // Code that does not need the Android app shell: lookup, cache, OCR text logic, the analysis
-// pipeline, settings and the overlay UI. The platform-free core lives in commonMain and also
-// builds for iOS (iosArm64, iosSimulatorArm64); the overlay UI and theme stay in androidMain until
-// the Compose Multiplatform move.
+// pipeline, settings and the Compose Multiplatform UI (overlay card, setup, history, verify chrome).
+// Everything platform-free lives in commonMain and also builds for iOS (iosArm64,
+// iosSimulatorArm64), packaged as the static framework "Shared".
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
@@ -45,9 +45,17 @@ kotlin {
         withHostTest {
             isReturnDefaultValues = true
         }
+        // Compose resources (Res.drawable.*) are packaged as Android assets.
+        androidResources {
+            enable = true
+        }
     }
-    iosArm64()
-    iosSimulatorArm64()
+    listOf(iosArm64(), iosSimulatorArm64()).forEach {
+        it.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -69,17 +77,20 @@ kotlin {
             implementation(libs.ksoup)
             api(libs.room3.runtime)
             api(libs.androidx.datastore.preferences.core)
+            // The app module hosts these composables (ComposeView, setContent), so they are api.
+            api(libs.compose.runtime)
+            api(libs.compose.foundation)
+            api(libs.compose.ui)
+            api(libs.compose.material3)
+            implementation(libs.compose.components.resources)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
+            api(libs.coil.compose)
+            implementation(libs.coil.network.ktor3)
         }
         androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.compose.bom))
-            implementation(libs.compose.ui)
-            implementation(libs.compose.ui.graphics)
-            implementation(libs.compose.material3)
-            implementation(libs.compose.material.icons)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.okhttp)
-            implementation(libs.coil.compose)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
@@ -99,9 +110,10 @@ kotlin {
     }
 }
 
-composeCompiler {
-    // Compose is only used by the Android overlay UI for now; keep the plugin off the iOS compilations.
-    targetKotlinPlatforms.set(setOf(KotlinPlatformType.androidJvm))
+compose.resources {
+    packageOfResClass = "com.macle.royaleassist.resources"
+    publicResClass = true
+    generateResClass = always
 }
 
 dependencies {

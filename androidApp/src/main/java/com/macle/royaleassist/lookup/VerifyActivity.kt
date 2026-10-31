@@ -1,20 +1,23 @@
 package com.macle.royaleassist.lookup
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
-import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.viewinterop.AndroidView
 import com.macle.royaleassist.L
+import com.macle.royaleassist.ui.RoyalTheme
+import com.macle.royaleassist.ui.VERIFY_CHECKING
+import com.macle.royaleassist.ui.VERIFY_DONE
+import com.macle.royaleassist.ui.VerifyScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,40 +25,25 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Shows royaleapi.com in a WebView so the user can pass the Cloudflare check once ("Verify you are
  * human"). The `cf_clearance` cookie lands in the shared WebView [CookieManager] and [HttpClients]
- * reuses it (with the same WebView User-Agent) for plain OkHttp requests. Closes itself as soon as
- * a real RoyaleAPI page has loaded.
+ * reuses it (with the same WebView User-Agent) for plain HTTP requests. Closes itself as soon as
+ * a real RoyaleAPI page has loaded. The chrome around the WebView is the shared [VerifyScreen].
  */
-class VerifyActivity : Activity() {
+class VerifyActivity : ComponentActivity() {
     private lateinit var web: WebView
-    private lateinit var status: TextView
+    private val status = mutableStateOf(VERIFY_CHECKING)
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0E1A2B"))
-            fitsSystemWindows = true
+        web = WebView(this)
+        setContent {
+            RoyalTheme {
+                VerifyScreen(status.value, onClose = { finish() }) { modifier ->
+                    AndroidView(factory = { web }, modifier = modifier)
+                }
+            }
         }
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(24, 16, 24, 16)
-        }
-        status = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            text = "Checking RoyaleAPI... tap the checkbox if one appears."
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val close = Button(this).apply { text = "Close"; setOnClickListener { finish() } }
-        bar.addView(status)
-        bar.addView(close)
-        web = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-        }
-        root.addView(bar)
-        root.addView(web)
-        setContentView(root)
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
@@ -93,7 +81,7 @@ class VerifyActivity : Activity() {
         val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true
         L.i("verify: passed ('$title'), cf_clearance=$ok")
         _verified.value = _verified.value + 1
-        status.text = "Verified. Returning..."
+        status.value = VERIFY_DONE
         web.postDelayed({ if (!isFinishing) finish() }, 800)
     }
 

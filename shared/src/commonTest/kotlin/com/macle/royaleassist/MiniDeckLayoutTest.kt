@@ -9,10 +9,10 @@ import com.macle.royaleassist.overlay.matchedNameLine
 import com.macle.royaleassist.overlay.miniDeckIconDp
 import com.macle.royaleassist.overlay.miniDeckWidthDp
 import com.macle.royaleassist.overlay.overlayMaxWidthDp
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /** The minimal deck card shows one deck at a time (arrows when paging) and must fit the phone's width. */
 class MiniDeckLayoutTest {
@@ -25,7 +25,7 @@ class MiniDeckLayoutTest {
                 for (paged in listOf(false, true)) {
                     val icon = miniDeckIconDp(max, paged)
                     val w = miniDeckWidthDp(icon, paged)
-                    if (icon > MINI_DECK_MIN_ICON_DP) assertTrue("$screenDp dp x$scale, paged=$paged: $w > $max", w <= max + 0.01f)
+                    if (icon > MINI_DECK_MIN_ICON_DP) assertTrue(w <= max + 0.01f, "$screenDp dp x$scale, paged=$paged: $w > $max")
                 }
             }
         }
@@ -35,7 +35,7 @@ class MiniDeckLayoutTest {
         // At the largest size on a small phone they shrink to fit, arrows included.
         val max = overlayMaxWidthDp(360f, 1.5f)
         val icon = miniDeckIconDp(max, paged = true)
-        assertTrue("$icon", icon < 46f)
+        assertTrue(icon < 46f, "$icon")
         assertEquals(max, miniDeckWidthDp(icon, paged = true), 0.01f)
     }
 

@@ -12,6 +12,10 @@ import com.macle.royaleassist.ocr.OcrEngine
 import com.macle.royaleassist.ocr.TesseractFallback
 import com.macle.royaleassist.pipeline.Analyzer
 import com.macle.royaleassist.settings.Settings
+import com.macle.royaleassist.ui.CardImages
+import kotlinx.coroutines.launch
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +43,9 @@ class RoyaleAssistApp : Application() {
         super.onCreate()
         instance = this
         useSkiaResize()
+        // Card images through the app's Ktor client; the Coil 2 cache folder is no longer read.
+        CardImages.install(http, diskCacheDir = File(cacheDir, "coil3_disk_cache").toOkioPath())
+        appScope.launch { File(cacheDir, "image_cache").takeIf { it.exists() }?.deleteRecursively() }
         registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
             private fun counts(a: android.app.Activity) = !a.javaClass.name.contains(".debug.")
             override fun onActivityResumed(a: android.app.Activity) { if (counts(a)) ownScreensResumed++ }
