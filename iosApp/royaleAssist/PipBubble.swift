@@ -50,6 +50,7 @@ final class PipBubble: NSObject, IosScreenHost {
             return
         }
         activateAudioSession()
+        sourceView.pinClock()
         // The layer needs a frame before picture in picture can start.
         if let image = IosOverlay.shared.currentImage() { showFrame(image: image) }
         let controller = pip ?? makeController()
@@ -94,7 +95,8 @@ final class PipBubble: NSObject, IosScreenHost {
             sampleBufferDisplayLayer: sourceView.displayLayer, playbackDelegate: self)
         let controller = AVPictureInPictureController(contentSource: source)
         controller.delegate = self
-        // Skip buttons instead of a scrubber: they step through the decks.
+        // Skip buttons instead of a scrubber: they step through the decks. (Linear playback would
+        // disable forward skip; nothing else in the API turns the skip buttons off.)
         controller.requiresLinearPlayback = false
         pip = controller
         return controller
@@ -112,7 +114,7 @@ final class PipBubble: NSObject, IosScreenHost {
     }
 
     private func enqueue(_ cg: CGImage) {
-        guard let buffer = Self.sampleBuffer(from: cg) else { return }
+        guard let buffer = Self.sampleBuffer(from: cg, at: sourceView.clockTime) else { return }
         let renderer = sourceView.displayLayer.sampleBufferRenderer
         if renderer.status == .failed { renderer.flush() }
         renderer.enqueue(buffer)
@@ -137,8 +139,9 @@ final class PipBubble: NSObject, IosScreenHost {
         return nil
     }
 
-    /// A BGRA pixel buffer with [cg], wrapped in a sample buffer that is shown at once.
-    private static func sampleBuffer(from cg: CGImage) -> CMSampleBuffer? {
+    /// A BGRA pixel buffer with [cg], wrapped in a sample buffer stamped [time] (the layer's pinned
+    /// clock) and marked to be shown at once.
+    private static func sampleBuffer(from cg: CGImage, at time: CMTime) -> CMSampleBuffer? {
         let w = cg.width, h = cg.height
         let attrs: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [:] as [CFString: Any],
@@ -159,8 +162,7 @@ final class PipBubble: NSObject, IosScreenHost {
         var format: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pb, formatDescriptionOut: &format) == noErr,
               let format else { return nil }
-        var timing = CMSampleTimingInfo(
-            duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: time, decodeTimeStamp: .invalid)
         var sampleBuffer: CMSampleBuffer?
         guard CMSampleBufferCreateReadyWithImageBuffer(
             allocator: nil, imageBuffer: pb, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &sampleBuffer) == noErr,
@@ -212,9 +214,12 @@ extension PipBubble: AVPictureInPictureSampleBufferPlaybackDelegate {
         c.invalidatePlaybackState()
     }
 
-    /// A finite range, so the window shows skip buttons (a live stream would hide them).
+    /// A finite range, so the window shows skip buttons (a live stream would hide them). AVKit
+    /// requires a finite range to contain the current time of the layer's timebase; the layer's
+    /// clock is pinned in the middle of it ([PipSourceView.pinClock]), so the position is never at
+    /// either end and both skip buttons stay enabled.
     func pictureInPictureControllerTimeRangeForPlayback(_ c: AVPictureInPictureController) -> CMTimeRange {
-        CMTimeRange(start: .zero, duration: CMTime(seconds: 24 * 3600, preferredTimescale: 1))
+        CMTimeRange(start: .zero, duration: PipSourceView.clockRange)
     }
 
     /// "Playing" while a scan runs; otherwise the play button invites the next scan.
@@ -224,12 +229,18 @@ extension PipBubble: AVPictureInPictureSampleBufferPlaybackDelegate {
 
     func pictureInPictureController(_ c: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
 
-    /// Skip forward = an older deck, skip back = a newer one.
+    /// Skip forward = an older deck, skip back = a newer one. Works while paused (the normal state:
+    /// paused means "ready to scan"). The clock does not move: it stays pinned mid-range, which the
+    /// completion handler requires to be the current time when it runs.
     func pictureInPictureController(
         _ c: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void
     ) {
-        IosOverlay.shared.onSkip(forward: skipInterval.seconds > 0)
+        let forward = skipInterval.seconds > 0
+        NSLog("royaleassist bubble: skip \(forward ? "forward" : "back") (\(skipInterval.seconds) s)")
+        sourceView.pinClock()
+        IosOverlay.shared.onSkip(forward: forward)
         completionHandler()
+        c.invalidatePlaybackState()
     }
 }
 
@@ -242,11 +253,36 @@ final class PipSourceView: UIView {
         layer as! AVSampleBufferDisplayLayer
     }
 
+    /// Length of the playback range the window is told about; the clock sits at its middle.
+    static let clockRange = CMTime(seconds: 24 * 3600, preferredTimescale: 600)
+    static let clockPosition = CMTime(seconds: 12 * 3600, preferredTimescale: 600)
+
+    /// The layer's clock, stopped (rate 0) at [clockPosition]. Without it the layer runs on the host
+    /// clock (seconds since boot, often more than 24 h), so the window saw a position outside the
+    /// playback range: at or past the end, where forward skip is disabled and skips go nowhere.
+    private let clock: CMTimebase?
+
     override init(frame: CGRect) {
+        var tb: CMTimebase?
+        let status = CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &tb)
+        if status != noErr { NSLog("royaleassist bubble: no timebase (\(status))") }
+        clock = tb
         super.init(frame: frame)
         displayLayer.videoGravity = .resizeAspect
+        displayLayer.controlTimebase = clock
+        pinClock()
         isUserInteractionEnabled = false
     }
+
+    /// Puts the clock back at [clockPosition], stopped.
+    func pinClock() {
+        guard let clock else { return }
+        CMTimebaseSetRate(clock, rate: 0)
+        CMTimebaseSetTime(clock, time: Self.clockPosition)
+    }
+
+    /// The time new frames are stamped with (the pinned clock), so they are on screen at once.
+    var clockTime: CMTime { clock.map { CMTimebaseGetTime($0) } ?? Self.clockPosition }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 }

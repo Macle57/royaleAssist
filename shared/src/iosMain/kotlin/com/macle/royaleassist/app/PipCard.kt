@@ -35,6 +35,7 @@ import com.macle.royaleassist.L
 import com.macle.royaleassist.overlay.Panel
 import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.overlay.Scaled
+import com.macle.royaleassist.overlay.decksFor
 import com.macle.royaleassist.overlay.matchedNameLine
 import com.macle.royaleassist.overlay.showsDeck
 import com.macle.royaleassist.ui.Royal
@@ -120,23 +121,30 @@ private fun PipContent(v: PipView) {
 private fun CardContent(v: PipView.Card) {
     val state = v.state
     if (showsDeck(state, deckOnly = true, decksToShow = v.decksToShow)) {
-        // The mini deck card of the Android overlay, a bit larger to fill the window.
-        Scaled(PIP_CARD_SCALE) {
-            Panel(
-                state = state,
-                pinned = false,
-                onPin = {},
-                onClose = {},
-                onRetry = null,
-                onPickLine = {},
-                onVerify = {},
-                alpha = 1f,
-                deckOnly = true,
-                decksToShow = v.decksToShow,
-                maxWidthDp = 304f / PIP_CARD_SCALE,
-                deckIndex = v.deckIndex,
-                onDeckStep = {},
-            )
+        // The mini deck card of the Android overlay, a bit larger to fill the window. Nothing in
+        // the image can be tapped, so no arrows: the window's skip buttons change the deck, which
+        // the line under the card says when there is more than one.
+        val decks = decksFor((state as? PanelState.Result)?.result, v.decksToShow).size
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Scaled(PIP_CARD_SCALE) {
+                Panel(
+                    state = state,
+                    pinned = false,
+                    onPin = {},
+                    onClose = {},
+                    onRetry = null,
+                    onPickLine = {},
+                    onVerify = {},
+                    alpha = 1f,
+                    deckOnly = true,
+                    decksToShow = v.decksToShow,
+                    maxWidthDp = 304f / PIP_CARD_SCALE,
+                    deckIndex = v.deckIndex,
+                    onDeckStep = null,
+                    deckCounter = true,
+                )
+            }
+            if (decks > 1) SkipHint()
         }
         return
     }
@@ -166,7 +174,33 @@ private fun CardContent(v: PipView.Card) {
     }
 }
 
-private const val PIP_CARD_SCALE = 1.2f
+/** Leaves room under the card for the [SkipHint] line in the 180 dp tall window. */
+private const val PIP_CARD_SCALE = 1.1f
+
+/** "<< >> change deck": the window's skip buttons page through the decks. */
+@Composable
+private fun SkipHint() {
+    Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(SkipBack, contentDescription = null, colorFilter = ColorFilter.tint(Royal.Gold), modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Image(SkipForward, contentDescription = null, colorFilter = ColorFilter.tint(Royal.Gold), modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("change deck", style = MaterialTheme.typography.labelMedium, color = Royal.Mist, maxLines = 1)
+    }
+}
+
+/** Two left-pointing triangles (rewind), drawn in code like [Crown]. */
+private val SkipBack: ImageVector by lazy { doubleTriangle("SkipBack", left = true) }
+
+/** Two right-pointing triangles (fast forward). */
+private val SkipForward: ImageVector by lazy { doubleTriangle("SkipForward", left = false) }
+
+private fun doubleTriangle(name: String, left: Boolean): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        fun x(v: Float) = if (left) 24f - v else v
+        path(fill = SolidColor(Royal.Gold)) { moveTo(x(2f), 5f); lineTo(x(12f), 12f); lineTo(x(2f), 19f); close() }
+        path(fill = SolidColor(Royal.Gold)) { moveTo(x(12f), 5f); lineTo(x(22f), 12f); lineTo(x(12f), 19f); close() }
+    }.build()
 
 @Composable
 private fun BubbleRow(busy: Boolean, title: String, body: String) {

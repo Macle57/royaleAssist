@@ -214,6 +214,8 @@ fun Panel(
     deckIndex: Int = 0,
     /** Steps to an older (+1) or newer (-1) deck; null hides the arrows. */
     onDeckStep: ((Int) -> Unit)? = null,
+    /** Shows "1/3" on the name line when there are several decks (by default only with the arrows). */
+    deckCounter: Boolean = onDeckStep != null,
 ) {
     val decks = decksFor((state as? PanelState.Result)?.result, decksToShow)
     if (deckOnly && !pinned && decks.isNotEmpty()) {
@@ -221,6 +223,7 @@ fun Panel(
         // several decks, arrows beside the grid step through them. Tap the card to pin it.
         val mini = RoundedCornerShape(8.dp)
         val paged = decks.size > 1 && onDeckStep != null
+        val counted = decks.size > 1 && (paged || deckCounter)
         val page = deckPageIndex(deckIndex, decks.size)
         val maxW = maxWidthDp ?: overlayMaxWidthDp(screenWidthDp(scale), scale)
         val iconDp = miniDeckIconDp(maxW, paged)
@@ -238,7 +241,7 @@ fun Panel(
         ) {
             val r = (state as? PanelState.Result)?.result
             val nameLine = matchedNameLine(r)
-            if (nameLine != null || paged) {
+            if (nameLine != null || counted) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = MINI_DECK_GAP),
                     verticalAlignment = Alignment.CenterVertically,
@@ -246,7 +249,7 @@ fun Panel(
                     Box(Modifier.weight(1f)) {
                         nameLine?.let { (name, clan) -> MiniNameLine(name, clan, guess = r?.strongMatch == false) }
                     }
-                    if (paged) {
+                    if (counted) {
                         Text(
                             "${page + 1}/${decks.size}",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 13.sp),
@@ -259,9 +262,9 @@ fun Panel(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val arrow = Modifier.width(MINI_DECK_ARROW_DP.dp).height(iconW * 2.4f)
-                if (paged) DeckArrow(left = true, enabled = page > 0, arrow) { onDeckStep(-1) }
+                if (paged) DeckArrow(left = true, enabled = page > 0, arrow) { onDeckStep?.invoke(-1) }
                 Box(Modifier.width(gridW)) { DeckGrid(decks[page], showLevels = false, gap = MINI_DECK_GAP) }
-                if (paged) DeckArrow(left = false, enabled = page < decks.size - 1, arrow) { onDeckStep(1) }
+                if (paged) DeckArrow(left = false, enabled = page < decks.size - 1, arrow) { onDeckStep?.invoke(1) }
             }
         }
         return
