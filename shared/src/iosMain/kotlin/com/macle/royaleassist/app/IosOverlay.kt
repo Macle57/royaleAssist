@@ -6,6 +6,7 @@ import coil3.request.ImageRequest
 import com.macle.royaleassist.L
 import com.macle.royaleassist.lookup.LookupOrigin
 import com.macle.royaleassist.lookup.LookupResult
+import com.macle.royaleassist.lookup.RoyaleApiHealth
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
@@ -27,6 +28,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,8 +80,10 @@ interface IosScreenHost {
  * growing, second pass, full-screen fallback), looks the player up and shows the minimal deck
  * card in the window. The window is a video player, so the card stays (no hide timer): the idle
  * bubble only shows before the first scan, and every later play press shows the spinner, then the
- * new card. The skip buttons step through the recent decks ([DeckPager]). Also implements the
- * setup screen's [ScreenCaptureControls] ("Scan now" shows the result in the app).
+ * new card. The skip buttons step through the recent decks ([DeckPager]). When RoyaleAPI needs the
+ * browser check again ([RoyaleApiHealth], probed at launch, on foreground and every 5 minutes while
+ * the window is up) the bubble turns red with a "!" badge. Also implements the setup screen's
+ * [ScreenCaptureControls] ("Scan now" shows the result in the app).
  */
 object IosOverlay : ScreenCaptureControls {
     private val scope = MainScope()
@@ -99,6 +105,8 @@ object IosOverlay : ScreenCaptureControls {
     private var prefs = OverlayPrefs()
     private var job: Job? = null
     private var renderJob: Job? = null
+    private var probeJob: Job? = null
+    private val health get() = RoyaleApiHealth.shared
 
     /** Called by the Swift shell at launch with its picture-in-picture host. */
     fun attach(host: IosScreenHost) {
@@ -106,6 +114,13 @@ object IosOverlay : ScreenCaptureControls {
         IosApp.start()
         L.i("bubble: attached (picture in picture ${if (host.isBubbleSupported()) "supported" else "not supported"})")
         scope.launch { IosApp.settings.overlayPrefs.collect { prefs = it; redraw() } }
+        scope.launch {
+            health.state.map { it.needsVerification }.distinctUntilChanged().drop(1).collect { warn ->
+                L.i("bubble: RoyaleAPI ${if (warn) "needs verification" else "verified"}, redrawing")
+                redraw()
+            }
+        }
+        probe()
         watchBackground()
         refresh()
         val defaults = NSUserDefaults.standardUserDefaults
@@ -156,7 +171,14 @@ object IosOverlay : ScreenCaptureControls {
     fun bubbleShown(shown: Boolean) {
         L.i("bubble: ${if (shown) "shown" else "hidden"}")
         _status.update { it.copy(bubbleShown = shown, message = if (shown) null else it.message) }
+        probeJob?.cancel()
+        probeJob = if (shown) scope.launch { health.watch(IosApp.http) } else null
         if (shown) redraw()
+    }
+
+    /** Checks RoyaleAPI's browser check (skipped when a page was fetched within the last minute). */
+    private fun probe() {
+        scope.launch { health.probe(IosApp.http) }
     }
 
     /** From Swift: picture in picture could not start. */
@@ -166,7 +188,7 @@ object IosOverlay : ScreenCaptureControls {
     }
 
     /** The frame the window shows now (Swift asks before starting picture in picture). */
-    fun currentImage(): UIImage? = renderer.render(viewNow()).also { savePipDebug() }
+    fun currentImage(): UIImage? = renderer.render(viewNow(), health.state.value.needsVerification).also { savePipDebug() }
 
     override fun refresh() {
         val h = host
@@ -324,7 +346,7 @@ object IosOverlay : ScreenCaptureControls {
             while (true) {
                 val scanning = busy ?: isBusy()
                 if (h.isBubbleShown()) {
-                    renderer.render(viewNow(scanning))?.let { h.showFrame(it) }
+                    renderer.render(viewNow(scanning), health.state.value.needsVerification)?.let { h.showFrame(it) }
                     if (n == 0 || !scanning) savePipDebug()
                 }
                 n++
@@ -357,6 +379,7 @@ object IosOverlay : ScreenCaptureControls {
         }
         center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
             VisionText.cpuOnly = false
+            probe()
         }
     }
 

@@ -10,6 +10,7 @@ import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import com.macle.royaleassist.L
+import com.macle.royaleassist.lookup.RoyaleApiHealth
 import com.macle.royaleassist.lookup.VerifyCheck
 import kotlinx.cinterop.readValue
 import kotlinx.coroutines.delay
@@ -60,7 +61,9 @@ fun VerifyWebView(url: String, modifier: Modifier = Modifier, onVerified: (Boole
                 lastTitle = title
             }
             if (VerifyCheck.passed(title, current)) {
-                onVerified(handOver(web))
+                val clearance = handOver(web)
+                RoyaleApiHealth.shared.reportOk("verifier")
+                onVerified(clearance)
                 break
             }
         }

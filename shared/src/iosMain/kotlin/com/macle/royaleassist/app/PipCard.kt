@@ -24,6 +24,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -35,6 +36,7 @@ import com.macle.royaleassist.L
 import com.macle.royaleassist.overlay.Panel
 import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.overlay.Scaled
+import com.macle.royaleassist.overlay.WarningBadge
 import com.macle.royaleassist.overlay.decksFor
 import com.macle.royaleassist.overlay.matchedNameLine
 import com.macle.royaleassist.overlay.showsDeck
@@ -69,6 +71,7 @@ sealed interface PipView {
 @OptIn(ExperimentalComposeUiApi::class)
 class PipRenderer {
     private val view = mutableStateOf<PipView>(PipView.Idle(false))
+    private val warning = mutableStateOf(false)
     private var scene: ImageComposeScene? = null
     private val start = TimeSource.Monotonic.markNow()
 
@@ -76,10 +79,12 @@ class PipRenderer {
     var lastPng: ByteArray? = null
         private set
 
-    fun render(v: PipView): UIImage? = try {
+    /** Draws [v]; [warning] = RoyaleAPI needs the browser check again (red bubble, "!" badge). */
+    fun render(v: PipView, warning: Boolean = false): UIImage? = try {
         view.value = v
+        this.warning.value = warning
         val s = scene ?: ImageComposeScene(WIDTH_PX, HEIGHT_PX, Density(DENSITY), coroutineContext = Dispatchers.Main) {
-            RoyalTheme { PipContent(view.value) }
+            RoyalTheme { PipContent(view.value, this.warning.value) }
         }.also { scene = it }
         Snapshot.sendApplyNotifications()
         val img = s.render(start.elapsedNow().inWholeNanoseconds)
@@ -103,19 +108,38 @@ class PipRenderer {
 internal fun ByteArray.toNSData(): NSData = usePinned { NSData.dataWithBytes(it.addressOf(0), size.toULong()) }
 
 @Composable
-private fun PipContent(v: PipView) {
+private fun PipContent(v: PipView, warning: Boolean) {
     Box(Modifier.fillMaxSize().background(Royal.Night), contentAlignment = Alignment.Center) {
         when (v) {
             is PipView.Idle -> BubbleRow(
                 busy = false,
+                warning = warning,
                 title = "Tap, then play",
-                body = if (v.capturing) "Reads the opponent and shows their decks." else "Start screen capture in royaleAssist first.",
+                body = when {
+                    warning -> VERIFY_HINT
+                    v.capturing -> "Reads the opponent and shows their decks."
+                    else -> "Start screen capture in royaleAssist first."
+                },
             )
-            PipView.Busy -> BubbleRow(busy = true, title = "Reading the screen...", body = "Looking up the opponent.")
-            is PipView.Card -> CardContent(v)
+            PipView.Busy -> BubbleRow(
+                busy = true,
+                warning = warning,
+                title = "Reading the screen...",
+                body = if (warning) VERIFY_HINT else "Looking up the opponent.",
+            )
+            is PipView.Card -> {
+                CardContent(v)
+                // Visible while a deck is up, so the expired check is noticed before the next scan.
+                if (warning) WarningBadge(BADGE_DP.dp, Modifier.align(Alignment.TopEnd).padding(12.dp))
+            }
         }
     }
 }
+
+private const val VERIFY_HINT = "RoyaleAPI check expired. Open royaleAssist and tap Verify RoyaleAPI."
+
+/** The bubble's 18 dp badge, scaled with the 72 dp circle here (56 dp on Android). */
+private const val BADGE_DP = 22
 
 @Composable
 private fun CardContent(v: PipView.Card) {
@@ -203,18 +227,22 @@ private fun doubleTriangle(name: String, left: Boolean): ImageVector =
     }.build()
 
 @Composable
-private fun BubbleRow(busy: Boolean, title: String, body: String) {
+private fun BubbleRow(busy: Boolean, warning: Boolean, title: String, body: String) {
     Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(Royal.Navy)
-                .border(2.5.dp, Royal.Gold.copy(alpha = 0.85f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (busy) CircularProgressIndicator(Modifier.size(40.dp), color = Royal.Gold, strokeWidth = 4.dp)
-            else Image(Crown, contentDescription = null, colorFilter = ColorFilter.tint(Royal.Gold), modifier = Modifier.size(44.dp))
+        // The Android bubble (OverlayUi.Bubble) at 72 dp: red with a white rim and a badge when warning.
+        Box(Modifier.size(72.dp)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(if (warning) Royal.Danger else Royal.Navy)
+                    .border(2.5.dp, if (warning) Color.White.copy(alpha = 0.85f) else Royal.Gold.copy(alpha = 0.85f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(40.dp), color = Royal.Gold, strokeWidth = 4.dp)
+                else Image(Crown, contentDescription = null, colorFilter = ColorFilter.tint(Royal.Gold), modifier = Modifier.size(44.dp))
+            }
+            if (warning) WarningBadge(BADGE_DP.dp, Modifier.align(Alignment.TopEnd))
         }
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
