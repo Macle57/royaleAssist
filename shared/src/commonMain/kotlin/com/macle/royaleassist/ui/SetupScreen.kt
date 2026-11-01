@@ -418,7 +418,7 @@ private fun CaptureSection(capture: ScreenCaptureControls, decksToShow: Int, nav
             done = st.bubbleShown,
             title = if (st.bubbleShown) "Bubble is on" else "Show the bubble",
             body = if (!st.bubbleSupported) "Picture in picture is not available on this device."
-            else "A picture-in-picture window floats over the game. In a battle tap it, then play: the opponent is read and their recent decks show for at least 10 s. " +
+            else "A picture-in-picture window floats over the game. In a battle tap it, then play: the opponent is read and their recent decks stay up until the next scan. " +
                 "The skip buttons step through the decks. Drag the window aside or to the edge of the screen to tuck it away.",
             action = when {
                 !st.bubbleSupported -> null
