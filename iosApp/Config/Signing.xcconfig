@@ -1,0 +1,4 @@
+// Code signing for both targets (XcodeGen configFiles in project.yml). The Apple team id is not
+// committed: copy iosApp/Local.xcconfig.example to iosApp/Local.xcconfig (gitignored) and fill it
+// in. Without it simulator builds work as before; device builds need it.
+#include? "../Local.xcconfig"

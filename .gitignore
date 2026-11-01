@@ -30,6 +30,7 @@ Thumbs.db
 NUL
 
 # Xcode
+iosApp/Local.xcconfig
 xcuserdata/
 *.xcuserstate
 DerivedData/

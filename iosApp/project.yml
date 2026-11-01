@@ -7,6 +7,9 @@ options:
     iOS: "18.0"
   createIntermediateGroups: true
   developmentLanguage: en
+# Listed so the targets' config file gets a stable place in the project.
+fileGroups:
+  - Config
 settings:
   base:
     MARKETING_VERSION: "1.0"
@@ -16,6 +19,10 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "18.0"
+    # The Apple team for device installs comes from Local.xcconfig (gitignored), see Config/Signing.xcconfig.
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     sources:
       - path: royaleAssist
     dependencies:
@@ -36,8 +43,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
-        # Free Apple ID personal team (Aditya Goel); only needed for device installs.
-        DEVELOPMENT_TEAM: 4FJH73S8G8
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Kotlin Multiplatform direct integration (static framework "Shared" from :shared).
@@ -67,6 +72,9 @@ targets:
     type: app-extension
     platform: iOS
     deploymentTarget: "18.0"
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     sources:
       - path: royaleAssistBroadcast
     entitlements:
@@ -83,7 +91,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: 4FJH73S8G8
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
 schemes:

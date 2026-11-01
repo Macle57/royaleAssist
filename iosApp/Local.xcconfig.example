@@ -1,0 +1,3 @@
+// Copy to Local.xcconfig (gitignored), next to this file.
+// your Apple team id; only needed for device installs
+DEVELOPMENT_TEAM =

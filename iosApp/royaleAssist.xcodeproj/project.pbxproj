@@ -43,6 +43,7 @@
 		0541B4BBC95D327F3CA02C2B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		0E4AD85E9487CB3772BD10AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		244FDB0FF31A590506791287 /* royaleAssist.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = royaleAssist.entitlements; sourceTree = "<group>"; };
+		2654B2209828D6D2D2811927 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		27C03C1EDD19922EE72DE059 /* royaleAssistBroadcast.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = royaleAssistBroadcast.entitlements; sourceTree = "<group>"; };
 		34B35EBADEAA745ACF6A098C /* royaleAssistBroadcast.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = royaleAssistBroadcast.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		47EA81ACB48877BB70364928 /* royaleAssist.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = royaleAssist.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,10 +58,19 @@
 		3924AC3CFF075D83AB91907C = {
 			isa = PBXGroup;
 			children = (
+				55BDC7E4956225FA2BF80FC7 /* Config */,
 				5E762CDC41CCFA5F43CBE93F /* royaleAssist */,
 				AE9F66DAB0ECB66CD32DBC45 /* royaleAssistBroadcast */,
 				9AB5A519C80EE38369FF4112 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		55BDC7E4956225FA2BF80FC7 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				2654B2209828D6D2D2811927 /* Signing.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		5E762CDC41CCFA5F43CBE93F /* royaleAssist */ = {
@@ -146,11 +156,9 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4158F37B10EDB1626E07FA93 = {
-						DevelopmentTeam = 4FJH73S8G8;
 						ProvisioningStyle = Automatic;
 					};
 					60B95FAF724A3BDE95C10E5D = {
-						DevelopmentTeam = 4FJH73S8G8;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -240,11 +248,11 @@
 /* Begin XCBuildConfiguration section */
 		6C8C3B9173BFF439A7FDE163 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2654B2209828D6D2D2811927 /* Signing.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = royaleAssistBroadcast/royaleAssistBroadcast.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = royaleAssistBroadcast/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -264,12 +272,12 @@
 		};
 		86EADC4D94A656499EC80C64 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2654B2209828D6D2D2811927 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = royaleAssist/royaleAssist.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -420,12 +428,12 @@
 		};
 		D2E1C8DD0CB4F99753BBF6C1 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2654B2209828D6D2D2811927 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = royaleAssist/royaleAssist.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -453,11 +461,11 @@
 		};
 		D3E1FDA5230E55AC097DCF68 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2654B2209828D6D2D2811927 /* Signing.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = royaleAssistBroadcast/royaleAssistBroadcast.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 4FJH73S8G8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = royaleAssistBroadcast/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
