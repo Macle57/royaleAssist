@@ -61,6 +61,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.cache.CachePolicy
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -169,22 +171,68 @@ fun Scaled(scale: Float, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalDensity provides Density(d.density * scale, d.fontScale), content = content)
 }
 
+/**
+ * The floating bubble: the crown on a navy circle with a gold rim, a spinner while [busy]. With
+ * [warning] (RoyaleAPI needs the browser check again, see `RoyaleApiHealth`) the circle turns red
+ * with a white rim and a "!" badge sits on its top-end edge.
+ */
 @Composable
-fun Bubble(busy: Boolean, icon: Painter = painterResource(Res.drawable.ic_bubble), alpha: Float = 0.7f) {
+fun Bubble(
+    busy: Boolean,
+    icon: Painter = painterResource(Res.drawable.ic_bubble),
+    alpha: Float = 0.7f,
+    warning: Boolean = false,
+) {
+    Box(Modifier.size(56.dp).graphicsLayer { this.alpha = alpha }) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(if (warning) Royal.Danger else Royal.Navy)
+                .border(2.dp, if (warning) Color.White.copy(alpha = 0.85f) else Royal.Gold.copy(alpha = 0.85f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(30.dp), color = Royal.Gold, strokeWidth = 3.dp)
+            } else {
+                Icon(icon, contentDescription = "Scan opponent", tint = Royal.Gold, modifier = Modifier.size(30.dp))
+            }
+        }
+        if (warning) WarningBadge(18.dp, Modifier.align(Alignment.TopEnd))
+    }
+}
+
+/**
+ * The "RoyaleAPI needs verification" badge: a white disc with a thin night outline and a bold red
+ * "!". Designed at 18 dp on the 56 dp bubble; outline and mark scale with [size].
+ */
+@Composable
+fun WarningBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val k = size.value / 18f
+    val fontSize = with(LocalDensity.current) { (size * 0.72f).toSp() }
     Box(
-        modifier = Modifier
-            .size(56.dp)
-            .graphicsLayer { this.alpha = alpha }
+        modifier
+            .size(size)
             .clip(CircleShape)
-            .background(Royal.Navy)
-            .border(2.dp, Royal.Gold.copy(alpha = 0.85f), CircleShape),
+            .background(Color.White)
+            .border((1.5f * k).dp, Royal.Night, CircleShape)
+            .semantics { contentDescription = "RoyaleAPI needs verification" },
         contentAlignment = Alignment.Center,
     ) {
-        if (busy) {
-            CircularProgressIndicator(Modifier.size(30.dp), color = Royal.Gold, strokeWidth = 3.dp)
-        } else {
-            Icon(icon, contentDescription = "Scan opponent", tint = Royal.Gold, modifier = Modifier.size(30.dp))
-        }
+        Text(
+            "!",
+            color = Royal.Danger,
+            fontWeight = FontWeight.Black,
+            fontSize = fontSize,
+            lineHeight = fontSize,
+            textAlign = TextAlign.Center,
+            style = androidx.compose.ui.text.TextStyle(
+                lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                    alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                    trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both,
+                ),
+            ),
+        )
     }
 }
 

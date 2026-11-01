@@ -8,6 +8,8 @@ import com.macle.royaleassist.debug.ScanRecorder
 import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.lookup.HttpClients
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.RoyaleApiHealth
+import com.macle.royaleassist.lookup.VerifyActivity
 import com.macle.royaleassist.ocr.OcrEngine
 import com.macle.royaleassist.ocr.TesseractFallback
 import com.macle.royaleassist.pipeline.Analyzer
@@ -48,7 +50,11 @@ class RoyaleAssistApp : Application() {
         appScope.launch { File(cacheDir, "image_cache").takeIf { it.exists() }?.deleteRecursively() }
         registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
             private fun counts(a: android.app.Activity) = !a.javaClass.name.contains(".debug.")
-            override fun onActivityResumed(a: android.app.Activity) { if (counts(a)) ownScreensResumed++ }
+            override fun onActivityResumed(a: android.app.Activity) {
+                if (!counts(a)) return
+                // App back in the foreground: check RoyaleAPI's browser check (not from the verifier itself).
+                if (ownScreensResumed++ == 0 && a !is VerifyActivity) appScope.launch { RoyaleApiHealth.shared.probe(http) }
+            }
             override fun onActivityPaused(a: android.app.Activity) { if (counts(a)) ownScreensResumed = (ownScreensResumed - 1).coerceAtLeast(0) }
             override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
             override fun onActivityStarted(a: android.app.Activity) {}

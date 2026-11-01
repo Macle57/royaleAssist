@@ -30,6 +30,7 @@ import com.macle.royaleassist.RoyaleAssistApp
 import com.macle.royaleassist.capture.ConsentActivity
 import com.macle.royaleassist.capture.ScreenCapturer
 import com.macle.royaleassist.lookup.VerifyActivity
+import com.macle.royaleassist.lookup.RoyaleApiHealth
 import com.macle.royaleassist.lookup.RoyaleApiWeb
 import android.net.Uri
 import com.macle.royaleassist.ocr.Box
@@ -49,7 +50,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -71,6 +74,10 @@ import kotlin.math.roundToInt
  * the panel pins it (timer cancelled, line list shown); the close button hides it; tapping the
  * bubble always starts a new scan. The deck arrows page through the recent decks ([deckPager]) and
  * restart the hide timer.
+ *
+ * RoyaleAPI's browser check ([RoyaleApiHealth]) is probed at start and every 5 minutes while the
+ * service runs; when it needs doing again the bubble turns red with a "!" badge and the
+ * notification says so.
  */
 class OverlayService : Service() {
 
@@ -125,6 +132,12 @@ class OverlayService : Service() {
         }
         addBubble()
         _status.value = OverlayStatus(running = true, capturing = false)
+        scope.launch(Dispatchers.IO) { RoyaleApiHealth.shared.watch(app.http) }
+        scope.launch {
+            RoyaleApiHealth.shared.state.map { it.needsVerification }.distinctUntilChanged().drop(1).collect {
+                getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notification())
+            }
+        }
         scope.launch {
             // Re-run the lookup automatically after the user passed the RoyaleAPI check.
             VerifyActivity.verified.drop(1).collect {
@@ -186,7 +199,10 @@ class OverlayService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_bubble)
             .setContentTitle("royaleAssist is running")
-            .setContentText("Tap the crown bubble in a battle. Long-press it to set the scan region.")
+            .setContentText(
+                if (RoyaleApiHealth.shared.state.value.needsVerification) "RoyaleAPI needs verification. Open royaleAssist."
+                else "Tap the crown bubble in a battle. Long-press it to set the scan region.",
+            )
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
@@ -262,7 +278,8 @@ class OverlayService : Service() {
             setContent {
                 val isBusy by busy.collectAsState()
                 val p by prefs.collectAsState()
-                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, alpha = p.bubbleAlpha) } }
+                val health by RoyaleApiHealth.shared.state.collectAsState()
+                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, alpha = p.bubbleAlpha, warning = health.needsVerification) } }
             }
         })
         owner.attach(root)

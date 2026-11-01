@@ -52,6 +52,8 @@ import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.lookup.LookupChain
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.OfficialApi
+import com.macle.royaleassist.lookup.RoyaleApiHealth
+import com.macle.royaleassist.lookup.RoyaleApiStatus
 import com.macle.royaleassist.lookup.ScreenHint
 import com.macle.royaleassist.ocr.ScanRegion
 import com.macle.royaleassist.overlay.DeckGrid
@@ -105,6 +107,7 @@ fun SetupScreen(
 
     val prefs by settings.overlayPrefs.collectAsState(initial = OverlayPrefs())
     val cacheTtl by settings.cacheTtl.collectAsState(initial = CacheTtl.DEFAULT)
+    val royaleApi by RoyaleApiHealth.shared.state.collectAsState()
     val saveScans by settings.saveScans.collectAsState(initial = scans?.saveByDefault ?: false)
     var scanStats by remember { mutableStateOf(0 to 0L) }
     if (scans != null) LaunchedEffect(lifecycleOwner) {
@@ -285,8 +288,24 @@ fun SetupScreen(
                 color = Royal.Mist,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            Row(Modifier.padding(top = 6.dp)) {
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Pill("Verify RoyaleAPI", primary = false) { navigator.openVerify(query) }
+                // Probed on app foreground and while the bubble is up (RoyaleApiHealth).
+                Text(
+                    when (royaleApi.status) {
+                        RoyaleApiStatus.Verified -> "RoyaleAPI: verified"
+                        RoyaleApiStatus.NeedsVerification -> "RoyaleAPI: needs verification"
+                        RoyaleApiStatus.Unknown -> "RoyaleAPI: not checked yet"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (royaleApi.status) {
+                        RoyaleApiStatus.Verified -> Royal.Gold
+                        RoyaleApiStatus.NeedsVerification -> Royal.Danger
+                        RoyaleApiStatus.Unknown -> Royal.Mist
+                    },
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
             }
             Text("Cache for", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 14.dp))
             Text(

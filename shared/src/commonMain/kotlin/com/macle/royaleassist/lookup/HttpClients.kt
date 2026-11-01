@@ -44,7 +44,11 @@ interface HttpPlatform {
  * So the platform shares its cookies with the browser view that solved the challenge (Android: the
  * system WebView `CookieManager`, shared with `VerifyActivity`) and sends that browser's User-Agent.
  */
-class HttpClients(private val platform: HttpPlatform) {
+class HttpClients(
+    private val platform: HttpPlatform,
+    /** Told about every challenge and every page that got through (the "needs verification" warning). */
+    private val health: RoyaleApiHealth = RoyaleApiHealth.shared,
+) {
 
     @Volatile private var cachedUa: String? = null
 
@@ -65,8 +69,12 @@ class HttpClients(private val platform: HttpPlatform) {
 
     fun hasClearanceCookie(): Boolean = platform.hasClearanceCookie()
 
-    /** GET a RoyaleAPI web page as HTML, throwing [CloudflareBlockedException] on a challenge page. */
+    /**
+     * GET a RoyaleAPI web page as HTML, throwing [CloudflareBlockedException] on a challenge page.
+     * Reports the outcome to [RoyaleApiHealth] (lookups, the probe).
+     */
     suspend fun getHtml(url: String): String {
+        val started = nowMillis()
         val ua = userAgent()
         suspend fun get(): HttpResponse = client.get(url) {
             header("User-Agent", ua)
@@ -88,8 +96,12 @@ class HttpClients(private val platform: HttpPlatform) {
         val code = resp.status.value
         val body = resp.bodyAsText()
         L.i("HTTP GET $url -> $code (${body.length} chars, ${nowMillis() - t0} ms)")
-        if (isCloudflareChallenge(code, resp.headers["cf-mitigated"], body)) throw CloudflareBlockedException(url)
+        if (isCloudflareChallenge(code, resp.headers["cf-mitigated"], body)) {
+            health.reportBlocked("GET $url", started)
+            throw CloudflareBlockedException(url)
+        }
         if (code !in 200..299) throw HttpStatusException(code, body)
+        health.reportOk("GET $url", started)
         return body
     }
 

@@ -79,6 +79,7 @@ class VerifyActivity : ComponentActivity() {
         CookieManager.getInstance().flush()
         val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true
         L.i("verify: passed ('$title'), cf_clearance=$ok")
+        RoyaleApiHealth.shared.reportOk("verifier")
         _verified.value = _verified.value + 1
         status.value = VERIFY_DONE
         web.postDelayed({ if (!isFinishing) finish() }, 800)
