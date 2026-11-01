@@ -7,9 +7,10 @@ import Shared
 
 /// The bubble on iOS. iOS has no windows over other apps, so the bubble is a picture-in-picture
 /// window around an `AVSampleBufferDisplayLayer` that shows images the shared code draws
-/// (`IosOverlay` / `PipRenderer` in :shared): the crown bubble, a spinner while scanning, then the
-/// opponent's deck card. The window's play button is the tap on the bubble (scan), its skip
-/// buttons step through the recent decks. The screen itself comes from the broadcast extension
+/// (`IosOverlay` / `PipRenderer` in :shared): the crown bubble until the first scan, a spinner while
+/// scanning, then the opponent's deck card, which stays until the next play press replaces it.
+/// The window's play button is the tap on the bubble (scan), its skip buttons step through the
+/// recent decks. The screen itself comes from the broadcast extension
 /// (`royaleAssistBroadcast`), started with the system broadcast picker.
 final class PipBubble: NSObject, IosScreenHost {
     static let shared = PipBubble()

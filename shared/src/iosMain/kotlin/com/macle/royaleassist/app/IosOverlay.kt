@@ -13,8 +13,6 @@ import com.macle.royaleassist.ocr.VisionText
 import com.macle.royaleassist.overlay.DeckPager
 import com.macle.royaleassist.overlay.PanelState
 import com.macle.royaleassist.overlay.decksFor
-import com.macle.royaleassist.overlay.panelHideDelayMs
-import com.macle.royaleassist.overlay.showsDeck
 import com.macle.royaleassist.settings.OverlayPrefs
 import com.macle.royaleassist.text.fmt2
 import com.macle.royaleassist.ui.ScreenCaptureControls
@@ -76,9 +74,10 @@ interface IosScreenHost {
  * frame ([CaptureFrames]); the picture-in-picture window is the bubble. Its play button (a "tap on
  * the bubble") reads that frame like the Android overlay reads a capture (scan region, region
  * growing, second pass, full-screen fallback), looks the player up and shows the minimal deck
- * card in the window, for the auto-hide time but at least 10 s for a deck ([panelHideDelayMs]);
- * the skip buttons step through the recent decks ([DeckPager]) and restart the timer. Also
- * implements the setup screen's [ScreenCaptureControls] ("Scan now" shows the result in the app).
+ * card in the window. The window is a video player, so the card stays (no hide timer): the idle
+ * bubble only shows before the first scan, and every later play press shows the spinner, then the
+ * new card. The skip buttons step through the recent decks ([DeckPager]). Also implements the
+ * setup screen's [ScreenCaptureControls] ("Scan now" shows the result in the app).
  */
 object IosOverlay : ScreenCaptureControls {
     private val scope = MainScope()
@@ -94,12 +93,11 @@ object IosOverlay : ScreenCaptureControls {
     private val appPager = DeckPager()
     override val deckIndex: StateFlow<Int> = appPager.index
 
-    /** What the bubble shows: Hidden = the bubble itself; hides again on a timer. */
+    /** What the window shows: Hidden = the idle bubble (before the first scan), else the last card, kept until the next scan. */
     private val panel = MutableStateFlow<PanelState>(PanelState.Hidden)
     private val pipPager = DeckPager()
     private var prefs = OverlayPrefs()
     private var job: Job? = null
-    private var hideJob: Job? = null
     private var renderJob: Job? = null
 
     /** Called by the Swift shell at launch with its picture-in-picture host. */
@@ -134,13 +132,24 @@ object IosOverlay : ScreenCaptureControls {
         job = scope.launch { runScan() }
     }
 
-    /** The bubble's skip buttons: an older (forward) or newer deck, and the full time again. */
+    /**
+     * The bubble's skip buttons: forward = an older deck, back = a newer one (clamped at both ends).
+     * Works whenever a deck card is up; ignored while a scan runs (the spinner is showing).
+     */
     fun onSkip(forward: Boolean) {
+        val dir = if (forward) "forward" else "back"
+        if (isBusy()) {
+            L.i("bubble: skip $dir ignored (scan running)")
+            return
+        }
         val count = decksFor((panel.value as? PanelState.Result)?.result, prefs.decksToShow).size
+        if (count == 0) {
+            L.i("bubble: skip $dir: no decks on the card")
+            return
+        }
         val changed = pipPager.step(if (forward) 1 else -1, count)
-        L.i("bubble: deck ${pipPager.index.value + 1}/$count${if (changed) "" else " (end)"}")
-        if (panel.value != PanelState.Hidden) scheduleHide()
-        redraw()
+        L.i("bubble: skip $dir -> deck ${pipPager.index.value + 1}/$count (index ${pipPager.index.value})${if (changed) "" else " (end)"}")
+        if (changed) redraw()
     }
 
     /** From Swift: picture in picture started or stopped. */
@@ -288,27 +297,13 @@ object IosOverlay : ScreenCaptureControls {
         redraw(busy = on)
     }
 
-    /** Shows [state] in the bubble (on a timer) and in the app. */
+    /** Shows [state] in the window (until the next scan replaces it) and in the app. */
     private fun show(state: PanelState) {
         appPager.reset()
         _lastScan.value = state
         pipPager.reset()
         panel.value = state
-        scheduleHide()
         redraw(busy = false)
-    }
-
-    private fun scheduleHide() {
-        hideJob?.cancel()
-        val state = panel.value
-        if (state == PanelState.Hidden || prefs.alwaysPin) return
-        val ms = panelHideDelayMs(state, prefs.autoHideSeconds, showsDeck(state, deckOnly = true, decksToShow = prefs.decksToShow))
-        L.i("bubble: card hides in $ms ms")
-        hideJob = scope.launch {
-            delay(ms)
-            panel.value = PanelState.Hidden
-            redraw()
-        }
     }
 
     private fun viewNow(busy: Boolean = isBusy()): PipView = when {
