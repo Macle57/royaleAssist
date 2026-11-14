@@ -4,6 +4,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import com.macle.royaleassist.L
+import com.macle.royaleassist.lookup.AutoVerifier
 import com.macle.royaleassist.lookup.LookupOrigin
 import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.RoyaleApiHealth
@@ -82,8 +83,11 @@ interface IosScreenHost {
  * bubble only shows before the first scan, and every later play press shows the spinner, then the
  * new card. The skip buttons step through the recent decks ([DeckPager]). When RoyaleAPI needs the
  * browser check again ([RoyaleApiHealth], probed at launch, on foreground and every 5 minutes while
- * the window is up) the bubble turns red with a "!" badge. Also implements the setup screen's
- * [ScreenCaptureControls] ("Scan now" shows the result in the app).
+ * the window is up, sooner near the end of a clearance), [AutoVerifier] tries it in a hidden
+ * WKWebView and the scan it spoiled is looked up again once it passes; the bubble turns red with a
+ * "!" badge only when that fails (in the background iOS may not let the web view run; coming to
+ * the front tries again). Also implements the setup screen's [ScreenCaptureControls] ("Scan now"
+ * shows the result in the app).
  */
 object IosOverlay : ScreenCaptureControls {
     private val scope = MainScope()
@@ -107,6 +111,11 @@ object IosOverlay : ScreenCaptureControls {
     private var renderJob: Job? = null
     private var probeJob: Job? = null
     private val health get() = RoyaleApiHealth.shared
+    private val auto get() = AutoVerifier.shared
+
+    /** A scan RoyaleAPI's check spoiled; looked up again once the check passes. */
+    private class AwaitingVerify(val pick: NamePick, val lines: List<OcrLine>, val at: Long)
+    private var awaitingVerify: AwaitingVerify? = null
 
     /** Called by the Swift shell at launch with its picture-in-picture host. */
     fun attach(host: IosScreenHost) {
@@ -115,11 +124,15 @@ object IosOverlay : ScreenCaptureControls {
         L.i("bubble: attached (picture in picture ${if (host.isBubbleSupported()) "supported" else "not supported"})")
         scope.launch { IosApp.settings.overlayPrefs.collect { prefs = it; redraw() } }
         scope.launch {
-            health.state.map { it.needsVerification }.distinctUntilChanged().drop(1).collect { warn ->
-                L.i("bubble: RoyaleAPI ${if (warn) "needs verification" else "verified"}, redrawing")
+            auto.needsUserFlow.drop(1).collect { warn ->
+                L.i("bubble: RoyaleAPI ${if (warn) "needs verification" else "fine or being verified"}, redrawing")
                 redraw()
             }
         }
+        // RoyaleAPI's check passed (hidden web view or by hand): look the spoiled scan up again.
+        scope.launch { auto.passes.drop(1).collect { onCheckPassed() } }
+        // The card says when the check is being passed in the background.
+        scope.launch { auto.state.map { it.phase }.distinctUntilChanged().drop(1).collect { if (panel.value != PanelState.Hidden) redraw() } }
         probe()
         watchBackground()
         refresh()
@@ -172,7 +185,7 @@ object IosOverlay : ScreenCaptureControls {
         L.i("bubble: ${if (shown) "shown" else "hidden"}")
         _status.update { it.copy(bubbleShown = shown, message = if (shown) null else it.message) }
         probeJob?.cancel()
-        probeJob = if (shown) scope.launch { health.watch(IosApp.http) } else null
+        probeJob = if (shown) scope.launch { auto.watch(IosApp.http) } else null
         if (shown) redraw()
     }
 
@@ -188,7 +201,7 @@ object IosOverlay : ScreenCaptureControls {
     }
 
     /** The frame the window shows now (Swift asks before starting picture in picture). */
-    fun currentImage(): UIImage? = renderer.render(viewNow(), health.state.value.needsVerification).also { savePipDebug() }
+    fun currentImage(): UIImage? = renderer.render(viewNow(), auto.needsUser()).also { savePipDebug() }
 
     override fun refresh() {
         val h = host
@@ -236,10 +249,12 @@ object IosOverlay : ScreenCaptureControls {
         job = scope.launch {
             setBusy(true)
             try {
+                val passesBefore = auto.passes.value
                 val r = IosApp.analyzer.lookupPick(pick, LookupOrigin.App)
                 val state = panelFor(r, lines, pick)
                 prefetchCards(state)
                 show(state)
+                onLookupDone(r, pick, lines, passesBefore)
             } finally {
                 setBusy(false)
             }
@@ -278,6 +293,7 @@ object IosOverlay : ScreenCaptureControls {
                 return
             }
             saveFrameDebug()
+            awaitingVerify = null
             val region = IosApp.settings.currentScanRegion()
             L.i("bubble: frame ${frame.width}x${frame.height}, ${fmt2(age)} s old")
             val ocr = withContext(Dispatchers.Default) { IosApp.analyzer.scan(frame, region, exclude = null, fullScreenFallback = true) }
@@ -288,6 +304,7 @@ object IosOverlay : ScreenCaptureControls {
                 return
             }
             // The card always shows decks, so they are always fetched.
+            val passesBefore = auto.passes.value
             val result = IosApp.analyzer.lookupPick(ocr.pick, LookupOrigin.App)
             L.i(
                 "bubble: scan done in ${nowMillis() - t0} ms (ocr ${ocr.millis} ms, ${ocr.mode}): '${name.text}' -> " +
@@ -297,6 +314,7 @@ object IosOverlay : ScreenCaptureControls {
             val state = panelFor(result, ocr.lines, ocr.pick)
             prefetchCards(state)
             show(state)
+            onLookupDone(result, ocr.pick, ocr.lines, passesBefore)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -304,6 +322,57 @@ object IosOverlay : ScreenCaptureControls {
             show(PanelState.NotFound("Scan failed: ${e.message}"))
         } finally {
             setBusy(false)
+        }
+    }
+
+    /**
+     * After a lookup RoyaleAPI's check got in the way of: remember it for when the check passes
+     * ([AutoVerifier] is already trying it, started by the block itself), or look it up again at
+     * once if it passed while the lookup ran.
+     */
+    private fun onLookupDone(r: LookupResult?, pick: NamePick, lines: List<OcrLine>, passesBefore: Int) {
+        if (r?.needsVerification != true || pick.name == null) return
+        val waiting = AwaitingVerify(pick, lines, nowMillis())
+        if (auto.passes.value != passesBefore) {
+            L.i("bubble: RoyaleAPI's check passed during the lookup")
+            awaitingVerify = null
+            val current = job
+            scope.launch { current?.join(); rerunLookup(waiting) }
+            return
+        }
+        awaitingVerify = waiting
+        L.i("bubble: lookup blocked by RoyaleAPI's check; again when it passes (auto: ${auto.state.value.phase})")
+    }
+
+    private fun onCheckPassed() {
+        val waiting = awaitingVerify?.takeIf { nowMillis() - it.at < RERUN_AFTER_VERIFY_MS }
+        awaitingVerify = null
+        if (waiting != null) rerunLookup(waiting)
+    }
+
+    /** The blocked lookup again; not a manual choice, so not promoted to a confirmed match. */
+    private fun rerunLookup(w: AwaitingVerify) {
+        if (isBusy()) {
+            L.i("bubble: RoyaleAPI's check passed, but a scan is running; not looking up '${w.pick.name?.text}' again")
+            return
+        }
+        L.i("bubble: RoyaleAPI's check passed, looking up '${w.pick.name?.text}' again")
+        job = scope.launch {
+            setBusy(true)
+            try {
+                val r = IosApp.analyzer.lookupPick(w.pick, LookupOrigin.App)
+                L.i("bubble: re-run -> '${r?.hit?.name}' #${r?.hit?.tag} stats=${r?.stats != null} decks=${r?.recentDecks?.size} blocked=${r?.needsVerification}")
+                val state = panelFor(r, w.lines, w.pick)
+                prefetchCards(state)
+                show(state)
+                if (r?.needsVerification == true) awaitingVerify = AwaitingVerify(w.pick, w.lines, nowMillis())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                L.e("bubble: re-run failed", e)
+            } finally {
+                setBusy(false)
+            }
         }
     }
 
@@ -346,7 +415,7 @@ object IosOverlay : ScreenCaptureControls {
             while (true) {
                 val scanning = busy ?: isBusy()
                 if (h.isBubbleShown()) {
-                    renderer.render(viewNow(scanning), health.state.value.needsVerification)?.let { h.showFrame(it) }
+                    renderer.render(viewNow(scanning), auto.needsUser())?.let { h.showFrame(it) }
                     if (n == 0 || !scanning) savePipDebug()
                 }
                 n++
@@ -379,6 +448,8 @@ object IosOverlay : ScreenCaptureControls {
         }
         center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
             VisionText.cpuOnly = false
+            // A check that failed in the background (web view suspended) may pass now.
+            auto.onForeground()
             probe()
         }
     }
@@ -427,4 +498,6 @@ object IosOverlay : ScreenCaptureControls {
     /** An old frame with the broadcast stopped is not the current screen. */
     private const val STALE_FRAME_SECONDS = 10.0
     private const val PREFETCH_TIMEOUT_MS = 4000L
+    /** A scan blocked by RoyaleAPI's check is looked up again when the check passes within this time. */
+    private const val RERUN_AFTER_VERIFY_MS = 2 * 60_000L
 }

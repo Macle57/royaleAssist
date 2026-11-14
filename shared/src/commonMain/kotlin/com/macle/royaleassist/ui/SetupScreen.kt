@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.macle.royaleassist.cache.CacheTtl
+import com.macle.royaleassist.lookup.AutoVerifier
 import com.macle.royaleassist.lookup.BattleLog
 import com.macle.royaleassist.lookup.LookupChain
 import com.macle.royaleassist.lookup.LookupResult
@@ -108,6 +109,7 @@ fun SetupScreen(
     val prefs by settings.overlayPrefs.collectAsState(initial = OverlayPrefs())
     val cacheTtl by settings.cacheTtl.collectAsState(initial = CacheTtl.DEFAULT)
     val royaleApi by RoyaleApiHealth.shared.state.collectAsState()
+    val autoVerify by AutoVerifier.shared.state.collectAsState()
     val saveScans by settings.saveScans.collectAsState(initial = scans?.saveByDefault ?: false)
     var scanStats by remember { mutableStateOf(0 to 0L) }
     if (scans != null) LaunchedEffect(lifecycleOwner) {
@@ -290,18 +292,22 @@ fun SetupScreen(
             )
             Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Pill("Verify RoyaleAPI", primary = false) { navigator.openVerify(query) }
-                // Probed on app foreground and while the bubble is up (RoyaleApiHealth).
+                // Probed on app foreground and while the bubble is up (RoyaleApiHealth); a block is
+                // first passed in the background (AutoVerifier), so it only asks the user when that failed.
+                val autoBusy = royaleApi.needsVerification && !AutoVerifier.shared.needsUser(royaleApi, autoVerify)
                 Text(
-                    when (royaleApi.status) {
-                        RoyaleApiStatus.Verified -> "RoyaleAPI: verified"
-                        RoyaleApiStatus.NeedsVerification -> "RoyaleAPI: needs verification"
-                        RoyaleApiStatus.Unknown -> "RoyaleAPI: not checked yet"
+                    when {
+                        autoBusy -> "RoyaleAPI: passing the check..."
+                        royaleApi.status == RoyaleApiStatus.Verified -> "RoyaleAPI: verified"
+                        royaleApi.status == RoyaleApiStatus.NeedsVerification -> "RoyaleAPI: needs verification"
+                        else -> "RoyaleAPI: not checked yet"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = when (royaleApi.status) {
-                        RoyaleApiStatus.Verified -> Royal.Gold
-                        RoyaleApiStatus.NeedsVerification -> Royal.Danger
-                        RoyaleApiStatus.Unknown -> Royal.Mist
+                    color = when {
+                        autoBusy -> Royal.Mist
+                        royaleApi.status == RoyaleApiStatus.Verified -> Royal.Gold
+                        royaleApi.status == RoyaleApiStatus.NeedsVerification -> Royal.Danger
+                        else -> Royal.Mist
                     },
                     maxLines = 1,
                     modifier = Modifier.padding(start = 10.dp),

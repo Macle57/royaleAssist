@@ -27,7 +27,7 @@ royaleAssist shows you your Clash Royale opponent's recent decks while the battl
 
 On Android the result hides by itself after the "Hide results after" time, but a deck card always stays up for at least 10 s, and the deck arrows restart that timer. Tap the card to pin it. "Player not found" hides after a few seconds. On iOS the card stays in the Picture in Picture window until the next scan.
 
-RoyaleAPI is behind a Cloudflare browser check. When that check expires, the bubble turns red with a "!" badge (on Android the notification says so too). Open royaleAssist and tap **Verify RoyaleAPI** again.
+RoyaleAPI is behind a Cloudflare browser check, and its pass lasts about 30 minutes. When it runs out, or a lookup meets the check, royaleAssist first tries the check itself in a hidden web view and looks the blocked player up again once it passes. Near the end of a pass it checks every minute or so, to renew it before a lookup needs it. Only when Cloudflare wants a real tap (its "Verify you are human" checkbox) does the bubble turn red with a "!" badge (on Android the notification says so too). Then open royaleAssist and tap **Verify RoyaleAPI**. On iOS the hidden web view may not run while another app is in front; then the check is tried again as soon as royaleAssist comes to the front.
 
 ## Install
 
@@ -85,7 +85,7 @@ iOS tests: `./gradlew :shared:iosSimulatorArm64Test`.
 
 ## Limitations
 
-- RoyaleAPI's Cloudflare check expires from time to time. Lookups then fail until you verify again; the red "!" bubble tells you when.
+- RoyaleAPI's Cloudflare check expires about every 30 minutes. royaleAssist tries to renew it in the background. When Cloudflare insists on its checkbox, lookups fail until you verify by hand, and the red "!" bubble tells you when.
 - Devanagari names are not read on iOS; Android reads them with ML Kit.
 - The iOS Picture in Picture window can cover the opponent's name. Drag it away from the top-left corner, or tuck it into the screen edge, before you scan.
 - The default scan region fits the Android phone battle layout. On iPad and other screen shapes the full-screen fallback does the work, which is slower.

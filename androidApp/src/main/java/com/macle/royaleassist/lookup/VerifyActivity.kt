@@ -18,15 +18,13 @@ import com.macle.royaleassist.ui.RoyalTheme
 import com.macle.royaleassist.ui.VERIFY_CHECKING
 import com.macle.royaleassist.ui.VERIFY_DONE
 import com.macle.royaleassist.ui.VerifyScreen
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Shows royaleapi.com in a WebView so the user can pass the Cloudflare check once ("Verify you are
  * human"). The `cf_clearance` cookie lands in the shared WebView [CookieManager] and [HttpClients]
  * reuses it (with the same WebView User-Agent) for plain HTTP requests. Closes itself as soon as
  * a real RoyaleAPI page has loaded. The chrome around the WebView is the shared [VerifyScreen].
+ * The manual fallback: [WebViewChallengeSolver] usually passes the check without showing anything.
  */
 class VerifyActivity : ComponentActivity() {
     private lateinit var web: WebView
@@ -79,8 +77,7 @@ class VerifyActivity : ComponentActivity() {
         CookieManager.getInstance().flush()
         val ok = CookieManager.getInstance().getCookie(RoyaleApiWeb.BASE)?.contains("cf_clearance=") == true
         L.i("verify: passed ('$title'), cf_clearance=$ok")
-        RoyaleApiHealth.shared.reportOk("verifier")
-        _verified.value = _verified.value + 1
+        AutoVerifier.shared.markPassed("verifier")
         status.value = VERIFY_DONE
         web.postDelayed({ if (!isFinishing) finish() }, 800)
     }
@@ -93,10 +90,6 @@ class VerifyActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_QUERY = "q"
-        private val _verified = MutableStateFlow(0)
-
-        /** Increments every time a verification completes; the overlay listens to retry the lookup. */
-        val verified: StateFlow<Int> = _verified.asStateFlow()
 
         fun intent(context: Context, query: String? = null) =
             Intent(context, VerifyActivity::class.java)

@@ -29,11 +29,14 @@ import com.macle.royaleassist.R
 import com.macle.royaleassist.RoyaleAssistApp
 import com.macle.royaleassist.capture.ConsentActivity
 import com.macle.royaleassist.capture.ScreenCapturer
+import com.macle.royaleassist.lookup.AutoVerifier
+import com.macle.royaleassist.lookup.LookupResult
 import com.macle.royaleassist.lookup.VerifyActivity
 import com.macle.royaleassist.lookup.RoyaleApiHealth
 import com.macle.royaleassist.lookup.RoyaleApiWeb
 import android.net.Uri
 import com.macle.royaleassist.ocr.Box
+import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
 import com.macle.royaleassist.ocr.OcrLine
 import com.macle.royaleassist.image.toArgbImage
@@ -76,8 +79,10 @@ import kotlin.math.roundToInt
  * restart the hide timer.
  *
  * RoyaleAPI's browser check ([RoyaleApiHealth]) is probed at start and every 5 minutes while the
- * service runs; when it needs doing again the bubble turns red with a "!" badge and the
- * notification says so.
+ * service runs (every minute or so near the end of a clearance, [AutoVerifier.watch]). When it
+ * needs doing again, [AutoVerifier] first passes it in an invisible WebView and the scan the block
+ * spoiled is re-run; only when that fails does the bubble turn red with a "!" badge and the
+ * notification say so.
  */
 class OverlayService : Service() {
 
@@ -108,6 +113,10 @@ class OverlayService : Service() {
     /** Fingerprints of the last scanned screen, so a manual correction can update its cache entry. */
     private var lastScreenKeys: com.macle.royaleassist.cache.ScreenCache.Keys? = null
 
+    /** A scan RoyaleAPI's check spoiled; re-run once the check is passed (see [onLookupDone]). */
+    private class AwaitingVerify(val pick: NamePick, val lines: List<OcrLine>, val at: Long, val pinned: Boolean)
+    private var awaitingVerify: AwaitingVerify? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -132,18 +141,15 @@ class OverlayService : Service() {
         }
         addBubble()
         _status.value = OverlayStatus(running = true, capturing = false)
-        scope.launch(Dispatchers.IO) { RoyaleApiHealth.shared.watch(app.http) }
+        scope.launch(Dispatchers.IO) { AutoVerifier.shared.watch(app.http) }
         scope.launch {
-            RoyaleApiHealth.shared.state.map { it.needsVerification }.distinctUntilChanged().drop(1).collect {
+            AutoVerifier.shared.needsUserFlow.drop(1).collect {
                 getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notification())
             }
         }
         scope.launch {
-            // Re-run the lookup automatically after the user passed the RoyaleAPI check.
-            VerifyActivity.verified.drop(1).collect {
-                val s = panel.value
-                if (s is PanelState.Result) s.pick.name?.let { pickLine(it, s.lines) }
-            }
+            // RoyaleAPI's check passed (in the background or by hand): re-run the scan it spoiled.
+            AutoVerifier.shared.passes.drop(1).collect { onCheckPassed() }
         }
         L.i("service: created")
     }
@@ -164,6 +170,7 @@ class OverlayService : Service() {
             ACTION_EDIT_REGION -> scope.launch { showRegionEditor() }
             ACTION_SHOW_REGION -> scope.launch { flashRegion() }
             ACTION_DEBUG_SHOW -> if (com.macle.royaleassist.BuildConfig.DEBUG) debugPanel?.let { debugPanel = null; showPanel(it) }
+            ACTION_DEBUG_LOOKUP -> if (com.macle.royaleassist.BuildConfig.DEBUG) debugLookup?.let { (name, clan) -> debugLookup = null; runDebugLookup(name, clan) }
         }
         return START_STICKY
     }
@@ -200,7 +207,7 @@ class OverlayService : Service() {
             .setSmallIcon(R.drawable.ic_bubble)
             .setContentTitle("royaleAssist is running")
             .setContentText(
-                if (RoyaleApiHealth.shared.state.value.needsVerification) "RoyaleAPI needs verification. Open royaleAssist."
+                if (AutoVerifier.shared.needsUser()) "RoyaleAPI needs verification. Open royaleAssist."
                 else "Tap the crown bubble in a battle. Long-press it to set the scan region.",
             )
             .setContentIntent(open)
@@ -278,8 +285,8 @@ class OverlayService : Service() {
             setContent {
                 val isBusy by busy.collectAsState()
                 val p by prefs.collectAsState()
-                val health by RoyaleApiHealth.shared.state.collectAsState()
-                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, alpha = p.bubbleAlpha, warning = health.needsVerification) } }
+                val warning by AutoVerifier.shared.needsUserFlow.collectAsState(AutoVerifier.shared.needsUser())
+                RoyalTheme { Scaled(p.scale) { Bubble(isBusy, alpha = p.bubbleAlpha, warning = warning) } }
             }
         })
         owner.attach(root)
@@ -556,6 +563,7 @@ class OverlayService : Service() {
                 return
             }
             val tCapture = System.currentTimeMillis() - t0
+            awaitingVerify = null
             val region = app.settings.currentScanRegion()
             val save = app.settings.saveScans.first()
             lastScreenKeys = null
@@ -585,6 +593,7 @@ class OverlayService : Service() {
                 return
             }
             val tLookup0 = System.currentTimeMillis()
+            val passesBefore = AutoVerifier.shared.passes.value
             val result = app.analyzer.lookupPick(ocr.pick)
             val total = System.currentTimeMillis() - t0
             L.i("service: scan done in $total ms (ocr ${ocr.millis} ms, ${ocr.mode}${if (ocr.expanded) ", region grown" else ""})")
@@ -600,12 +609,8 @@ class OverlayService : Service() {
                 )
                 app.appScope.launch { app.recorder.record(bmp, region, ocr, result, timings, screenCache = screen) }
             }
-            val found = result?.stats != null
-            showPanel(
-                if (found) PanelState.Result(ocr.lines, ocr.pick, result)
-                else PanelState.NotFound(result?.error ?: "Player not found", ocr.lines, ocr.pick),
-                pinRequested = keepPinned,
-            )
+            showPanel(panelFor(result, ocr.lines, ocr.pick), pinRequested = keepPinned)
+            onLookupDone(result, ocr.pick, ocr.lines, passesBefore, keepPinned)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -682,13 +687,11 @@ class OverlayService : Service() {
         job = scope.launch {
             busy.value = true
             try {
+                val passesBefore = AutoVerifier.shared.passes.value
                 val r = cur.result?.let { app.lookup.refresh(it) } ?: app.lookup.refresh(tag)
                 rememberForLastScreen(r)
-                showPanel(
-                    if (r.stats != null) PanelState.Result(cur.lines, cur.pick, r)
-                    else PanelState.NotFound(r.error ?: "Refresh failed", cur.lines, cur.pick),
-                    pinRequested = true,
-                )
+                showPanel(panelFor(r, cur.lines, cur.pick, "Refresh failed"), pinRequested = true)
+                onLookupDone(r, cur.pick, cur.lines, passesBefore, pinned = true)
             } finally {
                 busy.value = false
             }
@@ -702,14 +705,106 @@ class OverlayService : Service() {
         job = scope.launch {
             busy.value = true
             try {
+                val passesBefore = AutoVerifier.shared.passes.value
                 val result = app.analyzer.lookupPick(pick)
                 // The user chose this line by hand: that is a confirmed answer for the screen.
                 result?.let { rememberForLastScreen(it.copy(strongMatch = true)) }
-                showPanel(
-                    if (result?.stats != null) PanelState.Result(lines, pick, result)
-                    else PanelState.NotFound(result?.error ?: "Player not found", lines, pick),
-                    pinRequested = true,
+                showPanel(panelFor(result, lines, pick), pinRequested = true)
+                onLookupDone(result, pick, lines, passesBefore, pinned = true)
+            } finally {
+                busy.value = false
+            }
+        }
+    }
+
+    /**
+     * Debug builds: the lookup half of a scan for a name "read" off the screen (no capture, no
+     * OCR, the cache bypassed), with the same handling of RoyaleAPI's check as [runScan].
+     */
+    private fun runDebugLookup(name: String, clan: String?) {
+        if (job?.isActive == true) return
+        val box = Box(0, 0, 1, 1)
+        val lines = listOfNotNull(OcrLine(name, box, 1f, "debug"), clan?.let { OcrLine(it, box, 1f, "debug") })
+        val pick = NamePick(lines[0], lines.getOrNull(1), reason = "debug lookup")
+        L.i("service: debug lookup '$name' clan '$clan'")
+        job = scope.launch {
+            busy.value = true
+            try {
+                val passesBefore = AutoVerifier.shared.passes.value
+                val r = app.lookup.lookup(name, pick.hint(), bypassCache = true)
+                L.i("service: debug lookup -> '${r.hit?.name}' #${r.hit?.tag} stats=${r.stats != null} blocked=${r.needsVerification} error=${r.error}")
+                showPanel(panelFor(r, lines, pick), pinRequested = false)
+                onLookupDone(r, pick, lines, passesBefore, pinned = false)
+            } finally {
+                busy.value = false
+            }
+        }
+    }
+
+    /** A result, or a lookup RoyaleAPI's check blocked (the card offers the verifier), else "not found". */
+    private fun panelFor(r: LookupResult?, lines: List<OcrLine>, pick: NamePick, fallback: String = "Player not found"): PanelState =
+        if (r != null && (r.stats != null || r.needsVerification)) PanelState.Result(lines, pick, r)
+        else PanelState.NotFound(r?.error ?: fallback, lines, pick)
+
+    /**
+     * After a lookup: when RoyaleAPI's check got in its way, remember it so it is re-run once the
+     * check passes ([AutoVerifier] is already trying it in an invisible WebView, started by the
+     * block itself). If the check passed while this lookup was still running, re-run at once.
+     */
+    private fun onLookupDone(r: LookupResult?, pick: NamePick, lines: List<OcrLine>, passesBefore: Int, pinned: Boolean) {
+        if (r?.needsVerification != true || pick.name == null) return
+        val waiting = AwaitingVerify(pick, lines, System.currentTimeMillis(), pinned)
+        if (AutoVerifier.shared.passes.value != passesBefore) {
+            L.i("service: RoyaleAPI's check passed during the lookup")
+            awaitingVerify = null
+            // Called from inside the scan's job: re-run once it has finished.
+            val current = job
+            scope.launch { current?.join(); rerunLookup(waiting) }
+            return
+        }
+        awaitingVerify = waiting
+        val auto = AutoVerifier.shared.state.value
+        L.i("service: lookup blocked by RoyaleAPI's check; re-run when it passes (auto: ${auto.phase}${auto.detail?.let { ", $it" } ?: ""})")
+    }
+
+    private fun onCheckPassed() {
+        val waiting = awaitingVerify?.takeIf { System.currentTimeMillis() - it.at < RERUN_AFTER_VERIFY_MS }
+        awaitingVerify = null
+        if (waiting != null) {
+            rerunLookup(waiting)
+            return
+        }
+        // Verified by hand with a blocked card up: look that one up again.
+        val s = panel.value
+        if (s is PanelState.Result && s.result?.needsVerification == true && s.pick.name != null) {
+            rerunLookup(AwaitingVerify(s.pick, s.lines, System.currentTimeMillis(), pinned.value))
+        }
+    }
+
+    /**
+     * The same lookup again after RoyaleAPI's check was passed. Unlike [pickLine] this is not a
+     * manual choice, so the answer is not promoted to a confirmed match.
+     */
+    private fun rerunLookup(w: AwaitingVerify) {
+        if (job?.isActive == true) {
+            L.i("service: RoyaleAPI's check passed, but a scan is running; not re-running '${w.pick.name?.text}'")
+            return
+        }
+        L.i("service: RoyaleAPI's check passed, looking up '${w.pick.name?.text}' again")
+        job = scope.launch {
+            busy.value = true
+            try {
+                val result = app.analyzer.lookupPick(w.pick)
+                L.i(
+                    "service: re-run -> '${result?.hit?.name}' #${result?.hit?.tag} via ${result?.strategy} " +
+                        "stats=${result?.stats != null} decks=${result?.recentDecks?.size} blocked=${result?.needsVerification}",
                 )
+                showPanel(panelFor(result, w.lines, w.pick), pinRequested = w.pinned || pinned.value)
+                if (result?.needsVerification == true) awaitingVerify = AwaitingVerify(w.pick, w.lines, System.currentTimeMillis(), w.pinned)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                L.e("service: re-run failed", e)
             } finally {
                 busy.value = false
             }
@@ -739,16 +834,24 @@ class OverlayService : Service() {
         const val ACTION_PROJECTION_DENIED = "com.macle.royaleassist.PROJECTION_DENIED"
         /** Debug builds only: shows [debugPanel] as if a scan had produced it (overlay UI tests). */
         const val ACTION_DEBUG_SHOW = "com.macle.royaleassist.DEBUG_SHOW"
+        /** Debug builds only: looks up [debugLookup] as if a scan had read it (RoyaleAPI check tests). */
+        const val ACTION_DEBUG_LOOKUP = "com.macle.royaleassist.DEBUG_LOOKUP"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val AUTO_HIDE_MS = 10_000L
         const val REGION_FLASH_MS = 2_500L
+        /** A scan blocked by RoyaleAPI's check is re-run when the check passes within this time. */
+        const val RERUN_AFTER_VERIFY_MS = 2 * 60_000L
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 7
 
         /** Panel state for [ACTION_DEBUG_SHOW]; set by the debug harness. */
         @Volatile
         var debugPanel: PanelState? = null
+
+        /** Name and clan for [ACTION_DEBUG_LOOKUP]; set by the debug harness. */
+        @Volatile
+        var debugLookup: Pair<String, String?>? = null
 
         private val _status = MutableStateFlow(OverlayStatus())
         val status: StateFlow<OverlayStatus> = _status.asStateFlow()
