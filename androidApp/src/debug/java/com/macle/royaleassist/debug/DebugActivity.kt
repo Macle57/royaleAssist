@@ -70,10 +70,13 @@ class DebugActivity : Activity() {
         app.appScope.launch {
             app.ocr.ensureModels(applicationContext)
             if (name != null) {
-                // --ez noclan true: the screen showed "No Clan"; --ei league N / --ei trophies N: rank line.
+                // --ez noclan true: the screen showed "No Clan"; --ei league N / --ei trophies N: rank line;
+                // --es clanalt "Тцк" (other clan readings, comma-separated); --es badges 16000002,16000003.
                 val hint = com.macle.royaleassist.lookup.ScreenHint(
                     clan, intent.getBooleanExtra("noclan", false),
                     intent.getIntExtra("league", -1).takeIf { it >= 0 }, intent.getIntExtra("trophies", -1).takeIf { it >= 0 },
+                    clanAlternatives = intent.getStringExtra("clanalt")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
+                    badges = intent.getStringExtra("badges")?.split(',')?.mapNotNull { it.trim().toIntOrNull() }.orEmpty(),
                 )
                 val r = app.lookup.lookup(name, hint, bypassCache = intent.getBooleanExtra("fresh", false))
                 emit("RESULT lookup name='$name' ${hint.describe()} ${describe(r)}")

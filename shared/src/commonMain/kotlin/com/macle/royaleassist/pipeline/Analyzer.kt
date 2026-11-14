@@ -10,6 +10,7 @@ import com.macle.royaleassist.ocr.ColorStats
 import com.macle.royaleassist.lookup.StringSim
 import com.macle.royaleassist.ocr.NamePick
 import com.macle.royaleassist.ocr.NamePicker
+import com.macle.royaleassist.badge.BadgeMatcher
 import com.macle.royaleassist.ocr.LineReader
 import com.macle.royaleassist.ocr.LineReading
 import com.macle.royaleassist.ocr.OcrLine
@@ -94,6 +95,8 @@ class Analyzer(
         o = refine(src, o)
         o = withTesseract(src, o)
         o = tidy(o)
+        o = withClanAlternatives(src, o)
+        o = withBadge(src, o)
         L.i("analyze: final name='${o.pick.name?.text}' clan='${o.pick.clan?.text}' in ${nowMillis() - t0} ms")
         if (o.pick.name != null || !fullScreenFallback) return o
         L.i("analyze: nothing in the region, falling back to a full-screen scan")
@@ -107,6 +110,48 @@ class Analyzer(
         return ocrAndPick(crop, inCrop, useTesseract = false, forcedScale = regionScale(box), secondPass = false)
             .offset(box.left, box.top)
             .copy(mode = "region", scanned = box, crop = crop)
+    }
+
+    /**
+     * Reads the clan badge left of the picked name (see [BadgeMatcher]); the fitting badge ids go
+     * into the pick, so the lookup can tell same-named clans apart.
+     */
+    private fun withBadge(src: ArgbImage, o: OcrOutcome): OcrOutcome {
+        val name = o.pick.name ?: return o
+        if (o.pick.noClan) return o
+        val t0 = nowMillis()
+        val reading = try {
+            BadgeMatcher.read(src, name.box)
+        } catch (e: Exception) {
+            L.w("analyze: badge read failed", e)
+            null
+        } ?: return o
+        L.i("analyze: badge ${reading.describe()} in ${nowMillis() - t0} ms")
+        return o.copy(pick = o.pick.copy(badges = reading.matchingIds))
+    }
+
+    /**
+     * ML Kit has no Cyrillic model: "Тцк" comes back as Latin look-alikes ("TIK", 0.61). A weak
+     * Latin clan reading also gets a Cyrillic reading from the line reader, kept as an alternative
+     * (Tesseract's rus model reads Latin as Cyrillic too, so it never replaces the first reading).
+     */
+    private suspend fun withClanAlternatives(src: ArgbImage, o: OcrOutcome): OcrOutcome {
+        val clan = o.pick.clan ?: return o
+        if (!clanNeedsOtherScript(clan)) return o
+        val (crop, _) = Preprocess.crop(src, clan.box, 0.2f)
+        val readings = try {
+            tesseract.readLine(crop)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            L.w("analyze: clan re-read failed", e)
+            emptyList()
+        }
+        val alts = readings.filter { acceptClanAlternative(it, clan.text) }.map { it.text }.distinct().take(2)
+        L.i("analyze: clan '${clan.text}' (${fmt2(clan.confidence)}) other readings: " +
+            (readings.take(3).joinToString { "'${it.text}'(${it.lang} ${it.confidence})" }.ifEmpty { "none" }) +
+            " -> ${if (alts.isEmpty()) "none kept" else alts.joinToString { "'$it'" }}")
+        return if (alts.isEmpty()) o else o.copy(pick = o.pick.copy(clanAlternatives = alts))
     }
 
     private fun tidy(o: OcrOutcome): OcrOutcome {
@@ -138,7 +183,11 @@ class Analyzer(
         val pick0 = NamePicker.pick(lines0, exclude)
         var o = OcrOutcome(lines0, pick0, false, 0, mode = "full-screen", crop = src, raw = rec.raw)
         if (secondPass) o = refine(src, o)
-        if (useTesseract) o = withTesseract(src, o)
+        if (useTesseract) {
+            o = withTesseract(src, o)
+            o = withClanAlternatives(src, o)
+            o = withBadge(src, o)
+        }
         val ms = nowMillis() - t0
         L.i("analyze: name='${o.pick.name?.text}' (${o.pick.name?.source}) clan='${o.pick.clan?.text}' lines=${o.lines.size} in $ms ms: ${o.pick.reason}")
         return o.copy(millis = ms)
@@ -329,6 +378,21 @@ class Analyzer(
             val s = if (longSide <= 500) 3f else 2f
             return minOf(s, 2400f / longSide).coerceAtLeast(1f)
         }
+
+        /** A Latin clan reading weak enough that the clan may really be Cyrillic ("Тцк" -> "TIK" 0.61). */
+        fun clanNeedsOtherScript(clan: OcrLine): Boolean =
+            Scripts.dominant(clan.text) == UScript.LATIN && Scripts.letterCount(clan.text) in 2..12 &&
+                clan.confidence < CLAN_REREAD_BELOW
+
+        /** A Cyrillic re-read of the clan line, different from the first reading and clean enough to search. */
+        fun acceptClanAlternative(r: LineReading, first: String): Boolean =
+            Scripts.dominant(r.text) == UScript.CYRILLIC &&
+                Scripts.letterCount(r.text) >= 2 &&
+                Scripts.fitFraction(r.text, "tesseract-${r.lang}") >= 0.7 &&
+                r.confidence >= 40 &&
+                !r.text.equals(first, ignoreCase = true)
+
+        const val CLAN_REREAD_BELOW = 0.7f
 
         /** ML Kit has no Arabic/Cyrillic model; a weak or garbled reading of the name triggers Tesseract. */
         fun needsTesseract(name: OcrLine): Boolean {

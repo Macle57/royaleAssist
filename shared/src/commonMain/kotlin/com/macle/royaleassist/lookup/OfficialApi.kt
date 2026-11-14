@@ -10,9 +10,24 @@ import kotlinx.serialization.json.Json
 class OfficialApi(private val http: HttpClients) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    suspend fun searchClans(name: String, token: String): List<ApiClan> {
+    suspend fun searchClans(name: String, token: String): List<ApiClan> = searchClans(name, token, limit = 20, maxPages = 1)
+
+    /**
+     * Clans whose name contains [name], [limit] per page, following the paging cursor for up to
+     * [maxPages] pages (a common name like "iran" has hundreds).
+     */
+    suspend fun searchClans(name: String, token: String, limit: Int, maxPages: Int): List<ApiClan> {
         val q = formUrlEncode(name).replace("+", "%20")
-        return json.decodeFromString<ApiClanList>(http.getApiJson("$BASE/clans?name=$q&limit=20", token)).items
+        val out = mutableListOf<ApiClan>()
+        var after: String? = null
+        for (page in 0 until maxPages) {
+            val url = "$BASE/clans?name=$q&limit=$limit" + (after?.let { "&after=" + formUrlEncode(it) } ?: "")
+            val list = json.decodeFromString<ApiClanList>(http.getApiJson(url, token))
+            out += list.items
+            after = list.paging?.cursors?.after
+            if (after == null || list.items.size < limit) break
+        }
+        return out
     }
 
     suspend fun clanMembers(clanTag: String, token: String): List<ApiMember> =

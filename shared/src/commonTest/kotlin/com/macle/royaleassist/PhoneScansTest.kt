@@ -49,7 +49,7 @@ class PhoneScansTest {
             RoyaleApiWeb.ClanCard("C", "bolivia", 48, 70000),
             RoyaleApiWeb.ClanCard("D", "BOLIVIA", 49, 80000),
         )
-        assertEquals(listOf("D", "B", "C"), LookupChain.rankClanCards(cards, "BOLIVIA").map { it.first })
+        assertEquals(listOf("D", "B", "C"), LookupChain.rankClanCards(cards, "BOLIVIA").map { it.tag })
     }
 
     /** B: 20261028-154709-098, "tehran" is not "Tehran021". */

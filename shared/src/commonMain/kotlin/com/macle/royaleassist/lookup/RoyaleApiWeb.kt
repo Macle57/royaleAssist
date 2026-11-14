@@ -36,9 +36,12 @@ object RoyaleApiWeb {
     fun clanUrl(tag: String) = "$BASE/clan/${tagNoHash(tag)}"
 
     /** A clan card on the clan search page. */
-    data class ClanCard(val tag: String, val name: String, val members: Int?, val trophies: Int?)
+    data class ClanCard(val tag: String, val name: String, val members: Int?, val trophies: Int?, val badgeId: Int? = null)
 
-    /** Clan search cards with member and trophy counts ("22 / 50 Members", "90,320 Trophies"). */
+    /**
+     * Clan search cards with member and trophy counts ("22 / 50 Members", "90,320 Trophies") and the
+     * badge (`.../badge-fs8/Twin_Peaks_01-fs8.png` -> its official badge id).
+     */
     fun parseClanCards(html: String): List<ClanCard> =
         Ksoup.parse(html, BASE).select("div.card.clanresult[data-clantag]").mapNotNull { card ->
             val tag = card.attr("data-clantag").trim().uppercase()
@@ -47,8 +50,15 @@ object RoyaleApiWeb {
             val text = card.text()
             val members = Regex("(\\d+)\\s*/\\s*50\\s*Members").find(text)?.groupValues?.get(1)?.toIntOrNull()
             val trophies = Regex("([0-9][0-9,]*)\\s*Trophies").find(text)?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull()
-            ClanCard(tag, name, members, trophies)
+            val badge = card.selectFirst("img[src*=/badge]")?.attr("src")?.let(::badgeIdFromUrl)
+            ClanCard(tag, name, members, trophies, badge)
         }
+
+    /** "…/badge-fs8/Twin_Peaks_01-fs8.png", "…/badge/gold-1/A_Char_King_02.png" -> the badge's id. */
+    fun badgeIdFromUrl(url: String): Int? {
+        val file = url.substringBefore('?').substringAfterLast('/').substringBeforeLast('.').removeSuffix("-fs8")
+        return com.macle.royaleassist.badge.BadgeMatcher.idForName(file)
+    }
 
     /** (clanTag, clanName) pairs from the clan search page, in page order. */
     fun parseClanSearch(html: String): List<Pair<String, String>> =

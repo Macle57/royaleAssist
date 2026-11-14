@@ -16,8 +16,14 @@ data class NamePick(
     val trophies: Int? = null,
     /** Emoji or symbols around the name that OCR skipped (see [NamePicker.isDecorated]). */
     val decorated: Boolean = false,
+    /** Other readings of the clan line (see `ScreenHint.clanAlternatives`). */
+    val clanAlternatives: List<String> = emptyList(),
+    /** Badge ids that fit the badge left of the name; empty = not read or not confident. */
+    val badges: List<Int> = emptyList(),
 ) {
-    fun hint() = com.macle.royaleassist.lookup.ScreenHint(clan?.text, noClan && clan == null, league, trophies, decorated)
+    fun hint() = com.macle.royaleassist.lookup.ScreenHint(
+        clan?.text, noClan && clan == null, league, trophies, decorated, clanAlternatives, badges,
+    )
 }
 
 /**

@@ -72,7 +72,10 @@ class LookupChain(
         val profiles = HashMap<String, PlayerStats>()
         /** Battle logs fetched for the recency tie-break (newest first), reused for the decks. */
         val battles = ConcurrentMap<String, List<LastBattle>>()
-        fun sc(h: PlayerHit, n: String = name) = score(h, n, clan, noClan)
+        /** The clan as read plus its other readings (e.g. Cyrillic), each searched for clans. */
+        val clanOptions: List<String> = (listOfNotNull(clan) + hint.clanAlternatives)
+            .map { it.trim() }.filter { StringSim.normalize(it).length >= 2 }.distinctBy { StringSim.normalize(it) }
+        fun sc(h: PlayerHit, n: String = name) = scoreAny(h, n, clan, clanOptions.drop(1), noClan)
         /** Another candidate also has a matching name (then only an exact clan decides). */
         fun nameUnique(x: Scored) = candidates.values.none { it.hit.tag != x.hit.tag && it.nameSim >= STRONG_NAME_SIM }
         fun strong(x: Scored) = isStrong(x, clan, noClan, nameUnique(x))
@@ -143,8 +146,7 @@ class LookupChain(
             out
         },
         Strategy("L2c RoyaleAPI clan members", web = true) { ctx ->
-            val clan = ctx.clan
-            if (clan == null || StringSim.normalize(clan).length < 2) {
+            if (ctx.clanOptions.isEmpty()) {
                 emptyList()
             } else {
                 // Clans already seen on earlier search hits come first (they carry the exact clan tag),
@@ -152,59 +154,100 @@ class LookupChain(
                 val fromHits = ctx.candidates.values
                     .filter { it.hit.clanTag != null && it.clanSim >= 0.8 }
                     .sortedByDescending { it.clanSim }
-                    .map { it.hit.clanTag!! to (it.hit.clanName ?: clan) }
+                    .map { ClanRef(it.hit.clanTag!!, it.hit.clanName ?: ctx.clan.orEmpty(), null) }
                 // The clan slot sometimes shows a tag ("Klan: #GORGQPCJ"): use it directly.
-                val tagged = CLAN_TAG_RE.find(clan)?.groupValues?.get(1)?.uppercase()?.let { listOf(it to clan) }.orEmpty()
-                val cards = if (tagged.isNotEmpty()) emptyList() else RoyaleApiWeb.parseClanCards(http.getHtml(RoyaleApiWeb.clanSearchUrl(clan)))
+                val tagged = ctx.clan?.let { c -> CLAN_TAG_RE.find(c)?.groupValues?.get(1)?.uppercase()?.let { listOf(ClanRef(it, c, null)) } }.orEmpty()
+                val found = mutableListOf<ClanRef>()
+                var cardCount = 0
+                if (tagged.isEmpty()) {
+                    for (q in ctx.clanOptions) {
+                        val cards = RoyaleApiWeb.parseClanCards(http.getHtml(RoyaleApiWeb.clanSearchUrl(q)))
+                        cardCount += cards.size
+                        found += rankClanCards(cards, q)
+                    }
+                }
                 // Short or emoji-decorated names ("⚽JP⚽" read as "JP") cannot be found by name: check
                 // many more clans, exact clan-name matches first, then the biggest.
                 val wide = StringSim.compact(ctx.name).length <= 4 || ctx.hint.decorated
                 val limit = if (wide) MAX_CLAN_PAGES_WIDE else MAX_CLAN_PAGES
-                val ranked = (tagged + fromHits + rankClanCards(cards, clan)).distinctBy { it.first }.take(limit)
-                ctx.log("  ${cards.size} clans found by name, ${fromHits.map { it.first }.distinct().size} from search hits, checking ${ranked.size}${if (wide) " (short/decorated name)" else ""}")
+                val ranked = tagged + fromHits + pickClans(found.distinctBy { it.tag }, ctx.hint.badges, limit, MAX_CLAN_PAGES_WIDE)
+                    .filter { r -> tagged.none { it.tag == r.tag } && fromHits.none { it.tag == r.tag } }
+                ctx.log(
+                    "  $cardCount clans found by name (${ctx.clanOptions.joinToString { "'$it'" }}), ${fromHits.size} from search hits, " +
+                        "checking ${ranked.size}${if (wide) " (short/decorated name)" else ""}${badgeNote(found, ctx.hint.badges)}",
+                )
                 val out = mutableListOf<PlayerHit>()
-                for (batch in ranked.chunked(if (wide) CLAN_PAGE_CONCURRENCY else 1)) {
+                for (batch in ranked.chunked(if (wide || ctx.hint.badges.isNotEmpty()) CLAN_PAGE_CONCURRENCY else 1)) {
                     val pages = coroutineScope {
-                        batch.map { (tag, cName) ->
+                        batch.map { r ->
                             async {
                                 try {
-                                    RoyaleApiWeb.parseClanMembers(http.getHtml(RoyaleApiWeb.clanUrl(tag)), tag, cName)
+                                    RoyaleApiWeb.parseClanMembers(http.getHtml(RoyaleApiWeb.clanUrl(r.tag)), r.tag, r.name)
                                 } catch (e: CloudflareBlockedException) {
                                     throw e
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
-                                    ctx.log("  clan #$tag failed: ${e.message}")
+                                    ctx.log("  clan #${r.tag} failed: ${e.message}")
                                     emptyList()
                                 }
                             }
                         }.map { it.await() }
                     }
                     pages.forEach { out += it }
-                    if (pages.flatten().any { ctx.strong(ctx.sc(it)) && it.clanName != null && StringSim.clanSimilarity(it.clanName, clan) >= 1.0 }) break
+                    if (pages.flatten().any { ctx.strong(ctx.sc(it)) && exactClan(ctx, it) }) break
                 }
                 out
             }
         },
         Strategy("L3 official API clan members", web = false) { ctx ->
             val token = ctx.token
-            val clan = ctx.clan
+            val options = ctx.clanOptions.filter { it.length >= 3 }
             when {
                 token == null -> { ctx.log("  skipped (no API token)"); emptyList() }
-                clan == null || clan.trim().length < 3 -> { ctx.log("  skipped (no usable clan name)"); emptyList() }
+                options.isEmpty() -> { ctx.log("  skipped (no usable clan name)"); emptyList() }
                 else -> {
-                    val clans = rankClans(api.searchClans(clan.trim(), token).map { it.tag to it.name }, clan).take(MAX_CLAN_PAGES)
+                    // With the badge known, read deep into a common name's clan list ("iran": 300+
+                    // clans) and keep the ones wearing that badge; without it, only the first page.
+                    val deep = ctx.hint.badges.isNotEmpty()
+                    val found = mutableListOf<ClanRef>()
+                    var total = 0
+                    for (q in options) {
+                        val list = if (deep) api.searchClans(q, token, limit = API_CLAN_PAGE, maxPages = API_CLAN_PAGES)
+                        else api.searchClans(q, token)
+                        total += list.size
+                        found += rankApiClans(list.filter { (it.members ?: 1) > 0 }, q)
+                    }
+                    val clans = pickClans(found.distinctBy { it.tag }, ctx.hint.badges, MAX_CLAN_PAGES, MAX_CLAN_PAGES_WIDE)
+                    ctx.log("  $total clans found (${options.joinToString { "'$it'" }}), checking ${clans.size}${badgeNote(found, ctx.hint.badges)}")
                     val out = mutableListOf<PlayerHit>()
-                    for ((tag, cName) in clans) {
-                        val members = api.clanMembers(tag, token).map { PlayerHit(it.name, tagNoHash(it.tag), cName, tagNoHash(tag)) }
-                        out += members
-                        if (members.any { ctx.strong(ctx.sc(it)) }) break
+                    for (batch in clans.chunked(CLAN_PAGE_CONCURRENCY)) {
+                        val lists = coroutineScope {
+                            batch.map { r ->
+                                async {
+                                    try {
+                                        api.clanMembers(r.tag, token).map { PlayerHit(it.name, tagNoHash(it.tag), r.name, tagNoHash(r.tag)) }
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        ctx.log("  clan #${tagNoHash(r.tag)} members failed: ${e.message}")
+                                        emptyList()
+                                    }
+                                }
+                            }.map { it.await() }
+                        }
+                        lists.forEach { out += it }
+                        if (lists.flatten().any { ctx.strong(ctx.sc(it)) && exactClan(ctx, it) }) break
                     }
                     out
                 }
             }
         },
     )
+
+    /** [hit]'s clan is exactly (normalised) one of the clan readings. */
+    private fun exactClan(ctx: Ctx, hit: PlayerHit): Boolean =
+        hit.clanName != null && ctx.clanOptions.any { StringSim.clanSimilarity(hit.clanName, it) >= 1.0 }
 
     /** Search page rows, from the cache when fresh. */
     private suspend fun searchRows(ctx: Ctx, url: String): List<PlayerHit> {
@@ -301,6 +344,18 @@ class LookupChain(
         if (best0 != null && best0.nameSim >= MIN_NAME_SIM) {
             ctx.log("no strong match; using best weak candidate ${describe(best0)}")
             val best = weakTieByRecency(ctx, best0)
+            if (ctx.clan != null && best.clanSim < STRONG_CLAN_SIM) {
+                // The screen showed a clan and this player is in another one: a namesake, not the
+                // opponent (classic challenges: "ACE" in "iran" matched an "ACE" in "Irmandade Tuga").
+                ctx.log("best weak candidate's clan does not match ${ctx.hint.describe()}; not using it")
+                return LookupResult(
+                    name, clan, null, null, 0.0, null, hint = hint,
+                    alternatives = ctx.candidates.values.sortedByDescending { it.score }.take(5).map { it.hit },
+                    needsVerification = ctx.cloudflareBlocked, log = ctx.log,
+                    error = "No '$name' found in a clan named '${ctx.clan}'" +
+                        (best.hit.clanName?.let { " (closest: '${best.hit.name}' in $it)" } ?: ""),
+                )
+            }
             val note = if (ctx.noClan && !best.hit.clanName.isNullOrBlank()) {
                 "The opponent showed No Clan; this player is in ${best.hit.clanName}."
             } else null
@@ -735,6 +790,9 @@ class LookupChain(
         const val CLAN_PAGE_CONCURRENCY = 4
         const val MIN_NAME_SIM = 0.72
         const val MAX_CLAN_PAGES = 6
+        /** Official API clan search with a badge reading: up to 4 pages of 100 clans. */
+        const val API_CLAN_PAGE = 100
+        const val API_CLAN_PAGES = 4
         /** A clan tag written in the clan slot, e.g. "Klan: #GORGQPCJ" or "Clan #GVGVVGUO". */
         private val CLAN_TAG_RE = Regex("#\\s*([0289PYLQGRJCUVO]{6,10})\\b", RegexOption.IGNORE_CASE)
 
@@ -836,6 +894,12 @@ class LookupChain(
             return base.copy(clanSim = cs, score = base.nameSim * 0.6 + cs * 0.4)
         }
 
+        /** [score] against the clan as read and each of its [alternatives]; the best one counts. */
+        fun scoreAny(hit: PlayerHit, name: String, clan: String?, alternatives: List<String>, noClan: Boolean): Scored =
+            alternatives.fold(score(hit, name, clan, noClan)) { best, alt ->
+                score(hit, name, alt, noClan).takeIf { it.score > best.score } ?: best
+            }
+
         fun isStrong(s: Scored, clan: String?, noClan: Boolean, nameUnique: Boolean = false): Boolean = when {
             noClan && clan == null -> s.nameSim >= STRONG_NAME_SIM && s.clanSim >= 1.0
             clan == null -> s.nameSim >= STRONG_NAME_SIM
@@ -862,7 +926,7 @@ class LookupChain(
             rows.map { score(it, name, clan) }.maxByOrNull { it.score }
 
         /** Clan cards ranked: normalised-exact name first, then case-exact, then by member count and trophies. */
-        fun rankClanCards(cards: List<RoyaleApiWeb.ClanCard>, clan: String): List<Pair<String, String>> =
+        fun rankClanCards(cards: List<RoyaleApiWeb.ClanCard>, clan: String): List<ClanRef> =
             cards.map { it to StringSim.clanSimilarity(it.name, clan) }
                 .filter { it.second >= 0.8 }
                 .sortedWith(
@@ -872,7 +936,33 @@ class LookupChain(
                         .thenByDescending { it.first.members ?: 0 }
                         .thenByDescending { it.first.trophies ?: 0 }
                 )
-                .map { it.first.tag to it.first.name }
+                .map { ClanRef(it.first.tag, it.first.name, it.first.badgeId) }
+
+        /** Official API clans ranked like [rankClans] (empty clans already dropped), keeping the badge. */
+        fun rankApiClans(clans: List<ApiClan>, clan: String): List<ClanRef> {
+            val byTag = clans.associateBy { it.tag }
+            return rankClans(clans.map { it.tag to it.name }, clan).map { (tag, name) -> ClanRef(tag, name, byTag[tag]?.badgeId) }
+        }
+
+        /** A clan to read the members of; [badgeId] when the search result showed it. */
+        data class ClanRef(val tag: String, val name: String, val badgeId: Int?)
+
+        /**
+         * Which of the [ranked] clans to read. Without a badge reading: the first [limit]. With one
+         * ([badges] = the badge ids that fit the screen): every clan wearing a fitting badge first
+         * (up to [maxWithBadge]), then clans whose badge is unknown, and clans with a different badge
+         * only to fill up to [limit]: the badge on screen rules them out.
+         */
+        fun pickClans(ranked: List<ClanRef>, badges: List<Int>, limit: Int, maxWithBadge: Int): List<ClanRef> {
+            if (badges.isEmpty()) return ranked.take(limit)
+            val fit = ranked.filter { it.badgeId != null && it.badgeId in badges }.take(maxWithBadge)
+            val unknown = ranked.filter { it.badgeId == null }
+            val other = ranked.filter { it.badgeId != null && it.badgeId !in badges }
+            return fit + (unknown + other).take((limit - fit.size).coerceAtLeast(0))
+        }
+
+        private fun badgeNote(found: List<ClanRef>, badges: List<Int>): String =
+            if (badges.isEmpty()) "" else "; badge fits ${found.distinctBy { it.tag }.count { it.badgeId != null && it.badgeId in badges }} of ${found.distinctBy { it.tag }.size}"
 
         /** Clans whose name matches the OCR'd clan, exact (case-sensitive) matches first. */
         fun rankClans(clans: List<Pair<String, String>>, clan: String): List<Pair<String, String>> =
