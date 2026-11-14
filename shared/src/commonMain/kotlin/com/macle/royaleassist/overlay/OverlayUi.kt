@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -418,8 +419,10 @@ private fun ResultContent(
         NameHeader(state.pick.name?.text ?: "?", state.pick.clan?.text, null)
         Text(r?.error ?: "Not found", color = Royal.Danger, style = MaterialTheme.typography.bodyMedium)
         if (r?.needsVerification == true) {
+            val auto by com.macle.royaleassist.lookup.AutoVerifier.shared.state.collectAsState()
+            val solving = auto.phase == com.macle.royaleassist.lookup.AutoVerifier.Phase.Solving
             Text(
-                "RoyaleAPI wants a one-time check.",
+                if (solving) "Passing RoyaleAPI's check in the background, then looking again..." else "RoyaleAPI wants a one-time check.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Royal.Gold,
                 modifier = Modifier.clickable(onClick = onVerify).padding(top = 2.dp),
