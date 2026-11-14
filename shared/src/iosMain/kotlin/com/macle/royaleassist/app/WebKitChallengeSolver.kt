@@ -98,7 +98,7 @@ class WebKitChallengeSolver : ChallengeSolver {
     } ?: ""
 
     companion object {
-        const val TIMEOUT_MS = 20_000L
+        const val TIMEOUT_MS = 30_000L
         private const val POLL_MS = 500L
     }
 }

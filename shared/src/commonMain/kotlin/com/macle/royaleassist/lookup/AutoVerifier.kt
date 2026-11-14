@@ -20,7 +20,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * "Verify RoyaleAPI" screen does it but without showing it (Android: a WebView in an invisible,
  * untouchable overlay window; iOS: a WKWebView behind the app's UI). Cloudflare's managed
  * challenge usually lets a real browser through without a tap; the clearance cookie lands where
- * the HTTP client finds it. Implementations time out by themselves (about 20 s).
+ * the HTTP client finds it. Implementations time out by themselves (about 30 s; a slow device can need 20 s before Cloudflare decides).
  */
 fun interface ChallengeSolver {
     suspend fun attempt(query: String?): ChallengeAttempt
