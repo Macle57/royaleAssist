@@ -29,8 +29,8 @@ import kotlin.coroutines.resume
  * not attached to a window. The WebView shares the app's [CookieManager] and User-Agent with
  * [HttpClients], so a `cf_clearance` it earns is what the next lookup sends.
  *
- * Passed when a real RoyaleAPI page shows ([VerifyCheck.passed]); failed after [TIMEOUT_MS] (the
- * last page text says whether Cloudflare wanted a tap) or on a load error (offline).
+ * Passed when a real RoyaleAPI page shows ([VerifyCheck.passed]); failed after [TIMEOUT_MS] (still on
+ * the check then: most likely its tap-only checkbox) or on a load error (offline).
  */
 class WebViewChallengeSolver(private val context: Context) : ChallengeSolver {
 
@@ -138,7 +138,7 @@ class WebViewChallengeSolver(private val context: Context) : ChallengeSolver {
             runCatching {
                 w.evaluateJavascript(VerifyCheck.PAGE_TEXT_JS) { raw ->
                     val text = raw.orEmpty().trim('"').replace("\\n", " ").take(160)
-                    val interactive = VerifyCheck.wantsTap(text)
+                    val interactive = VerifyCheck.onChallenge(title)
                     finish(ChallengeAttempt(false, "timed out after ${ms()} ms ($mode) on '$title': \"$text\"", interactive = interactive))
                 }
             }.onFailure { finish(ChallengeAttempt(false, "timed out after ${ms()} ms ($mode) on '$title'")) }

@@ -78,7 +78,7 @@ class WebKitChallengeSolver : ChallengeSolver {
             val text = pageText(web)
             ChallengeAttempt(
                 false, "timed out after ${nowMillis() - t0} ms ($where, $state) on '${web.title}': \"$text\"",
-                interactive = VerifyCheck.wantsTap(text), background = background,
+                interactive = VerifyCheck.onChallenge(web.title), background = background,
             )
         } finally {
             web.stopLoading()

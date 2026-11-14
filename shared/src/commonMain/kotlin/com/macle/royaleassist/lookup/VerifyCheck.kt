@@ -20,13 +20,8 @@ object VerifyCheck {
             u.startsWith(RoyaleApiWeb.BASE)
     }
 
-    /**
-     * True when the challenge page's text asks for a tap (Turnstile's "Verify you are human"
-     * checkbox); "Verifying you are human..." is the part that passes by itself.
-     */
-    fun wantsTap(pageText: String): Boolean = WANTS_TAP.containsMatchIn(pageText)
-
-    private val WANTS_TAP = Regex("Verify you are human|Confirm you are human|press and hold", RegexOption.IGNORE_CASE)
+    /** True while the browser still shows Cloudflare's check ("Just a moment..."). */
+    fun onChallenge(title: String?): Boolean = title.orEmpty().contains("Just a moment", ignoreCase = true)
 
     /** Script for a web view: the start of the page's visible text (logged when an attempt gives up). */
     const val PAGE_TEXT_JS = "(document.body ? document.body.innerText : '').slice(0, 400)"

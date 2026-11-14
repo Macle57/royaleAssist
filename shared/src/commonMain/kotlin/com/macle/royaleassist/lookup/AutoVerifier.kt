@@ -31,7 +31,11 @@ data class ChallengeAttempt(
     val passed: Boolean,
     /** What happened, for the log ("'Search results - RoyaleAPI' in 4.1 s", "timed out on 'Just a moment...'"). */
     val detail: String,
-    /** Cloudflare showed a widget that wants a tap (Turnstile checkbox): only the user can pass it. */
+    /**
+     * Still on Cloudflare's check when the attempt gave up: it most likely shows its "Verify you
+     * are human" checkbox, which only the user can tap. (The checkbox sits in a cross-origin
+     * frame, so the page itself cannot be asked.)
+     */
     val interactive: Boolean = false,
     /** It ran while the app was in the background, where iOS may suspend web views. */
     val background: Boolean = false,
@@ -257,7 +261,7 @@ class AutoVerifier(
         }
         val s = _state.value
         L.i(
-            "autoverify: background attempt failed (${a.detail})${if (a.interactive) ", Cloudflare wants a tap" else ""}" +
+            "autoverify: background attempt failed (${a.detail})${if (a.interactive) ", still on Cloudflare's check (likely wants a tap)" else ""}" +
                 "${if (a.background) ", app in the background" else ""}; next try in ${(s.retryAt!! - now) / 1000} s at the earliest, " +
                 "the user can verify by hand",
         )
