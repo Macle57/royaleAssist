@@ -10,7 +10,7 @@ import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import com.macle.royaleassist.L
-import com.macle.royaleassist.lookup.RoyaleApiHealth
+import com.macle.royaleassist.lookup.AutoVerifier
 import com.macle.royaleassist.lookup.VerifyCheck
 import kotlinx.cinterop.readValue
 import kotlinx.coroutines.delay
@@ -62,7 +62,7 @@ fun VerifyWebView(url: String, modifier: Modifier = Modifier, onVerified: (Boole
             }
             if (VerifyCheck.passed(title, current)) {
                 val clearance = handOver(web)
-                RoyaleApiHealth.shared.reportOk("verifier")
+                AutoVerifier.shared.markPassed("verifier")
                 onVerified(clearance)
                 break
             }
@@ -73,8 +73,11 @@ fun VerifyWebView(url: String, modifier: Modifier = Modifier, onVerified: (Boole
     }
 }
 
-/** Copies the web view's royaleapi.com cookies and User-Agent to the HTTP client; true when `cf_clearance` was among them. */
-private suspend fun handOver(web: WKWebView): Boolean {
+/**
+ * Copies the web view's royaleapi.com cookies and User-Agent to the HTTP client; true when
+ * `cf_clearance` was among them. Used by this verifier and by [WebKitChallengeSolver].
+ */
+internal suspend fun handOver(web: WKWebView): Boolean {
     val ua = suspendCancellableCoroutine { c ->
         web.evaluateJavaScript("navigator.userAgent") { result, _ -> c.resume(result as? String) }
     }

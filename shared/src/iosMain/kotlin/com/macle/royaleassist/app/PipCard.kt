@@ -179,6 +179,8 @@ private fun CardContent(v: PipView.Card) {
     val name = matchedNameLine(r) ?: pick?.name?.let { it.text to pick.clan?.text }
     val message = when {
         notFound != null -> notFound.message
+        r?.needsVerification == true && r.stats == null && !com.macle.royaleassist.lookup.AutoVerifier.shared.needsUser() ->
+            "Passing RoyaleAPI's browser check in the background, then looking again..."
         r?.needsVerification == true && r.stats == null -> "RoyaleAPI wants a one-time browser check: open royaleAssist and tap Verify RoyaleAPI."
         r?.stats != null -> "No recent decks for this player." + (r.stats.trophies?.let { " Trophies $it." } ?: "")
         else -> r?.error ?: "Player not found"

@@ -4,9 +4,12 @@ import com.macle.royaleassist.L
 import com.macle.royaleassist.cache.CacheDb
 import com.macle.royaleassist.cache.LookupCache
 import com.macle.royaleassist.cache.create
+import com.macle.royaleassist.lookup.AutoVerifier
 import com.macle.royaleassist.lookup.HttpClients
 import com.macle.royaleassist.lookup.IosHttpPlatform
 import com.macle.royaleassist.lookup.LookupChain
+import com.macle.royaleassist.lookup.RoyaleApiHealth
+import kotlinx.coroutines.MainScope
 import com.macle.royaleassist.ocr.VisionLineReader
 import com.macle.royaleassist.ocr.VisionTextRecognizer
 import com.macle.royaleassist.pipeline.Analyzer
@@ -63,6 +66,12 @@ object IosApp {
         L.i("app: start (iOS)")
         val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
         CardImages.install(http, diskCacheDir = "$caches/coil3_disk_cache".toPath())
+        // RoyaleAPI's check is passed in a hidden WKWebView whenever a lookup or probe meets it.
+        AutoVerifier.shared.install(
+            WebKitChallengeSolver(),
+            confirm = { RoyaleApiHealth.shared.probe(http, force = true) },
+            scope = MainScope(),
+        )
         // `-openUrl royaleassist://...` launch argument: the same commands as a link, without the
         // "Open in royaleAssist?" prompt that `simctl openurl` raises (tests, automation).
         NSUserDefaults.standardUserDefaults.stringForKey(LAUNCH_URL_ARG)?.let { openUrl(it) }
