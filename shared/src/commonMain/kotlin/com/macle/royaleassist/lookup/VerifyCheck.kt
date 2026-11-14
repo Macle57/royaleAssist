@@ -8,12 +8,28 @@ object VerifyCheck {
     /** RoyaleAPI's host, without "www." ("royaleapi.com"). */
     val HOST: String = RoyaleApiWeb.BASE.substringAfter("://").substringBefore('/').removePrefix("www.")
 
-    /** True once a real RoyaleAPI page has loaded (not Cloudflare's "Just a moment..." interstitial). */
+    /**
+     * True once a real RoyaleAPI page has loaded: not Cloudflare's "Just a moment..." interstitial,
+     * and not the browser's own error page (offline, DNS), which is titled with the bare URL.
+     */
     fun passed(title: String?, url: String?): Boolean {
-        val t = title.orEmpty()
+        val t = title.orEmpty().trim()
         val u = url.orEmpty()
-        return t.isNotBlank() && !t.contains("Just a moment", ignoreCase = true) && u.startsWith(RoyaleApiWeb.BASE)
+        return t.isNotBlank() && !t.contains("Just a moment", ignoreCase = true) &&
+            !t.contains(HOST, ignoreCase = true) && !t.startsWith("http", ignoreCase = true) &&
+            u.startsWith(RoyaleApiWeb.BASE)
     }
+
+    /**
+     * True when the challenge page's text asks for a tap (Turnstile's "Verify you are human"
+     * checkbox); "Verifying you are human..." is the part that passes by itself.
+     */
+    fun wantsTap(pageText: String): Boolean = WANTS_TAP.containsMatchIn(pageText)
+
+    private val WANTS_TAP = Regex("Verify you are human|Confirm you are human|press and hold", RegexOption.IGNORE_CASE)
+
+    /** Script for a web view: the start of the page's visible text (logged when an attempt gives up). */
+    const val PAGE_TEXT_JS = "(document.body ? document.body.innerText : '').slice(0, 400)"
 
     /**
      * True for a cookie of royaleapi.com or one of its subdomains: `cf_clearance`, `__cf_bm` and the
