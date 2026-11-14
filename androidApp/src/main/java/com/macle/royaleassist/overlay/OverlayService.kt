@@ -91,6 +91,9 @@ class OverlayService : Service() {
     private var bubbleRoot: DragFrame? = null
     private var panelRoot: View? = null
     private var regionRoot: View? = null
+    /** The "drop here to remove" target, shown only while the bubble is dragged. */
+    private var dismissRoot: View? = null
+    private val dismissHot = MutableStateFlow(false)
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private var panelParams: WindowManager.LayoutParams? = null
 
@@ -201,7 +204,7 @@ class OverlayService : Service() {
             .setContentTitle("royaleAssist is running")
             .setContentText(
                 if (RoyaleApiHealth.shared.state.value.needsVerification) "RoyaleAPI needs verification. Open royaleAssist."
-                else "Tap the crown bubble in a battle. Long-press it to set the scan region.",
+                else "Tap the crown bubble in a battle. Long-press it to set the scan region; drag it to the ✕ at the bottom to remove it.",
             )
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
@@ -267,10 +270,16 @@ class OverlayService : Service() {
                 bubbleParams.x += dx
                 bubbleParams.y += dy
                 bubbleRoot?.let { wm.updateViewLayout(it, bubbleParams) }
+                updateDismissHot()
             },
-            onDragEnd = { clampBubble(); positionPanel() },
+            onDragEnd = {
+                val remove = dismissHot.value
+                hideDismissTarget()
+                if (remove) removeBubbleByDrag() else { clampBubble(); positionPanel() }
+            },
             onTap = { onBubbleTap() },
             onLongPress = { scope.launch { showRegionEditor() } },
+            onDragStart = { showDismissTarget() },
         )
         val owner = OverlayViewOwner().also { owners[root] = it }
         root.addView(ComposeView(this).apply {
@@ -286,6 +295,55 @@ class OverlayService : Service() {
         owner.resume()
         wm.addView(root, bubbleParams)
         bubbleRoot = root
+    }
+
+    // ---- drag to remove ----
+
+    private fun showDismissTarget() {
+        if (dismissRoot != null) return
+        dismissHot.value = false
+        val box = dp(DISMISS_TARGET_BOX.value.roundToInt())
+        val params = overlayParams(box, box, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dp(DISMISS_TARGET_BOTTOM_DP)
+        }
+        val view = composeView {
+            val hot by dismissHot.collectAsState()
+            DismissTarget(hot)
+        }
+        runCatching { wm.addView(view, params) }.onFailure { L.w("bubble: dismiss target not shown", it); return }
+        dismissRoot = view
+    }
+
+    private fun hideDismissTarget() {
+        removeWindow(dismissRoot)
+        dismissRoot = null
+        dismissHot.value = false
+    }
+
+    /** Whether the bubble's centre is within reach of the target's centre (screen coordinates). */
+    private fun updateDismissHot() {
+        val target = dismissRoot ?: return
+        val bubble = bubbleRoot ?: return
+        if (!target.isAttachedToWindow || target.width == 0) return
+        val t = IntArray(2).also { target.getLocationOnScreen(it) }
+        val b = IntArray(2).also { bubble.getLocationOnScreen(it) }
+        val dx = (b[0] + bubble.width / 2f) - (t[0] + target.width / 2f)
+        val dy = (b[1] + bubble.height / 2f) - (t[1] + target.height / 2f)
+        val reach = target.width / 2f + bubble.width / 4f
+        val hot = dx * dx + dy * dy <= reach * reach
+        if (hot != dismissHot.value) {
+            dismissHot.value = hot
+            if (hot) bubble.performHapticFeedback(
+                if (Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM else android.view.HapticFeedbackConstants.VIRTUAL_KEY,
+            )
+        }
+    }
+
+    /** The bubble was dropped on the target: same as "Stop" in the notification. */
+    private fun removeBubbleByDrag() {
+        L.i("bubble: dropped on the remove target; stopping")
+        stopSelf()
     }
 
     private fun scaledDp(v: Int) = (v * resources.displayMetrics.density * prefs.value.scale).roundToInt()
@@ -721,6 +779,7 @@ class OverlayService : Service() {
         capturer.shutdown()
         removePanel()
         removeRegionWindow()
+        hideDismissTarget()
         removeWindow(bubbleRoot)
         bubbleRoot = null
         owners.values.forEach { it.destroy() }
@@ -745,6 +804,8 @@ class OverlayService : Service() {
         const val REGION_FLASH_MS = 2_500L
         private const val CHANNEL = "overlay"
         private const val NOTIF_ID = 7
+        /** Gap between the remove target and the bottom of the screen. */
+        private const val DISMISS_TARGET_BOTTOM_DP = 48
 
         /** Panel state for [ACTION_DEBUG_SHOW]; set by the debug harness. */
         @Volatile

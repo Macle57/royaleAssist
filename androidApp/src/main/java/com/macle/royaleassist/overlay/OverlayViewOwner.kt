@@ -53,7 +53,8 @@ class OverlayViewOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
 /**
  * Container for the bubble that takes over all touches: drags move the window (using raw screen
  * coordinates, so moving the window under the finger does not cause jitter), short taps click,
- * and a long press (no movement) fires [onLongPress].
+ * and a long press (no movement) fires [onLongPress]. [onDragStart] fires once the finger has moved
+ * past the touch slop.
  */
 @SuppressLint("ViewConstructor")
 class DragFrame(
@@ -62,6 +63,7 @@ class DragFrame(
     private val onDragEnd: () -> Unit,
     private val onTap: () -> Unit,
     private val onLongPress: () -> Unit = {},
+    private val onDragStart: () -> Unit = {},
 ) : FrameLayout(context) {
     private var longPressed = false
     private val longPress = Runnable { if (!dragging) { longPressed = true; onLongPress() } }
@@ -86,6 +88,7 @@ class DragFrame(
                 if (!dragging && !longPressed && (abs(ev.rawX - downX) > slop || abs(ev.rawY - downY) > slop)) {
                     dragging = true
                     removeCallbacks(longPress)
+                    onDragStart()
                 }
                 if (dragging) {
                     onDrag((ev.rawX - lastX).toInt(), (ev.rawY - lastY).toInt())

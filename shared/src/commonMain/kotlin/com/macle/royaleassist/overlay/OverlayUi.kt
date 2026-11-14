@@ -203,6 +203,36 @@ fun Bubble(
 }
 
 /**
+ * The "drop here to remove" target shown at the bottom of the screen while the Android bubble is
+ * dragged: a dark disc with a white ✕ that turns red and grows when the bubble is over it ([hot]).
+ * Drawn in a box of [DISMISS_TARGET_BOX] so growing does not resize its window.
+ */
+@Composable
+fun DismissTarget(hot: Boolean) {
+    val disc = if (hot) 72.dp else 60.dp
+    Box(Modifier.size(DISMISS_TARGET_BOX), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(disc)
+                .clip(CircleShape)
+                .background(if (hot) Royal.Danger else Royal.Night.copy(alpha = 0.78f))
+                .border(2.dp, Color.White.copy(alpha = if (hot) 0.95f else 0.6f), CircleShape)
+                .semantics { contentDescription = "Drop the bubble here to remove it" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(disc * 0.36f)) {
+                val w = 3.dp.toPx()
+                drawLine(Color.White, Offset.Zero, Offset(size.width, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(Color.White, Offset(size.width, 0f), Offset(0f, size.height), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+        }
+    }
+}
+
+/** Outer size of [DismissTarget]; the disc grows inside it. */
+val DISMISS_TARGET_BOX = 88.dp
+
+/**
  * The "RoyaleAPI needs verification" badge: a white disc with a thin night outline and a bold red
  * "!". Designed at 18 dp on the 56 dp bubble; outline and mark scale with [size].
  */

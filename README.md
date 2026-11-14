@@ -46,7 +46,7 @@ With a free Apple ID the profile expires after 7 days. After that, sideload or b
 2. **Screen capture.**
    - Android: allow "Display over other apps", then tap **Allow** under "Allow screen capture" and choose **Start**.
    - iOS: tap **Start screen capture**, choose royaleAssist in the broadcast picker, then tap **Start Broadcast**. Stop it from Control Center or the red recording pill.
-3. **Show the bubble.** Tap **Start bubble** on Android or **Show bubble** on iOS, then switch to the game. In a battle, tap the bubble (Android) or press play in the window (iOS).
+3. **Show the bubble.** Tap **Start bubble** on Android or **Show bubble** on iOS, then switch to the game. In a battle, tap the bubble (Android) or press play in the window (iOS). To remove the Android bubble, drag it onto the ✕ that appears at the bottom of the screen.
 4. **Scan region (optional, Android).** Open a battle, long-press the bubble (or tap **Set scan region**), then drag the box over the opponent's name and clan. A smaller region is read faster.
 
 ## Build from source
