@@ -49,9 +49,17 @@ data class ScreenHint(
     val trophies: Int? = null,
     /** The name probably has emoji/symbols OCR did not read (text starts far right of the clan). */
     val decorated: Boolean = false,
+    /**
+     * Other readings of the clan line, e.g. the Cyrillic one when ML Kit's Latin model turned
+     * "Тцк" into "TIK". Clans are searched under each; the badge and the members decide.
+     */
+    val clanAlternatives: List<String> = emptyList(),
+    /** Badge ids that fit the badge on screen (see `BadgeReading.matchingIds`); empty = unknown. */
+    val badges: List<Int> = emptyList(),
 ) {
     fun describe() = listOfNotNull(
-        clan?.let { "clan '$it'" } ?: if (noClan) "no clan" else "clan unknown",
+        clan?.let { "clan '$it'" + clanAlternatives.joinToString("") { a -> " / '$a'" } } ?: if (noClan) "no clan" else "clan unknown",
+        badges.takeIf { it.isNotEmpty() }?.let { "badge ${it.size} fit" },
         league?.let { "League $it" },
         trophies?.let { "$it trophies" },
     ).joinToString(", ")
@@ -130,10 +138,16 @@ data class LastBattle(
 // ---- Official Clash Royale API DTOs (only the fields we use) ----
 
 @Serializable
-data class ApiClanList(val items: List<ApiClan> = emptyList())
+data class ApiClanList(val items: List<ApiClan> = emptyList(), val paging: ApiPaging? = null)
 
 @Serializable
-data class ApiClan(val tag: String, val name: String, val members: Int? = null, val clanScore: Int? = null)
+data class ApiPaging(val cursors: ApiCursors? = null)
+
+@Serializable
+data class ApiCursors(val after: String? = null)
+
+@Serializable
+data class ApiClan(val tag: String, val name: String, val members: Int? = null, val clanScore: Int? = null, val badgeId: Int? = null)
 
 @Serializable
 data class ApiMemberList(val items: List<ApiMember> = emptyList())
