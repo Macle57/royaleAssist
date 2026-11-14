@@ -6,10 +6,12 @@ import com.macle.royaleassist.cache.create
 import com.macle.royaleassist.image.useSkiaResize
 import com.macle.royaleassist.debug.ScanRecorder
 import com.macle.royaleassist.cache.LookupCache
+import com.macle.royaleassist.lookup.AutoVerifier
 import com.macle.royaleassist.lookup.HttpClients
 import com.macle.royaleassist.lookup.LookupChain
 import com.macle.royaleassist.lookup.RoyaleApiHealth
 import com.macle.royaleassist.lookup.VerifyActivity
+import com.macle.royaleassist.lookup.WebViewChallengeSolver
 import com.macle.royaleassist.ocr.OcrEngine
 import com.macle.royaleassist.ocr.TesseractFallback
 import com.macle.royaleassist.pipeline.Analyzer
@@ -63,6 +65,12 @@ class RoyaleAssistApp : Application() {
             override fun onActivityDestroyed(a: android.app.Activity) {}
         })
         L.init(recorder.logsDir)
+        // RoyaleAPI's check is passed in an invisible WebView whenever a lookup or probe meets it.
+        AutoVerifier.shared.install(
+            WebViewChallengeSolver(this),
+            confirm = { RoyaleApiHealth.shared.probe(http, force = true) },
+            scope = appScope,
+        )
     }
 
     companion object {

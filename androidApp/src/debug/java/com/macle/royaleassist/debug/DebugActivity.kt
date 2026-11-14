@@ -47,6 +47,10 @@ import java.io.File
  *     (turns the deck view on and shows the overlay deck card with [count] recent decks, no scan or lookup;
  *     decks come from a saved royaleapi.com battles page, else placeholder cards without icons)
  *
+ *   adb shell am start -n com.macle.royaleassist/.debug.DebugActivity --es mode challenge [--ez clear true] [--es name Macle [--es clan "..."]]
+ *     (RoyaleAPI's check passed in an invisible WebView; with a name, a bubble lookup that the check
+ *     blocks and that is re-run once it passes; see challenge())
+ *
  * Assets are the repo's samples/ folder (wired in app/build.gradle.kts for debug builds).
  */
 class DebugActivity : Activity() {
@@ -59,6 +63,7 @@ class DebugActivity : Activity() {
         if (mode == "show") { showImage(); return }
         if (mode == "seed") { seed(); return }
         if (mode == "deckcard") { deckCard(); return }
+        if (mode == "challenge") { challenge(); return }
 
         out = TextView(this).apply { setTextColor(Color.WHITE); textSize = 11f; setPadding(24, 80, 24, 24) }
         setContentView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(out) })
@@ -119,6 +124,40 @@ class DebugActivity : Activity() {
                 }
             }
             emit("DONE")
+        }
+    }
+
+    /**
+     * `--es mode challenge [--ez clear true] [--es name <player>] [--es clan <clan>]`: RoyaleAPI's
+     * check without the user. `clear` deletes the WebView cookies first (`cf_clearance` included),
+     * so the next RoyaleAPI request meets the check. With `name`, the bubble looks that player up
+     * as if a scan had read it (the overlay service must be running): the lookup is blocked, the
+     * invisible attempt runs and the service re-runs the lookup when it passes. Without it, one
+     * attempt runs directly. Log prefixes: "autoverify:", "service:", "RESULT challenge".
+     */
+    private fun challenge() {
+        val clear = intent.getBooleanExtra("clear", false)
+        val name = intent.getStringExtra("name")
+        val clan = intent.getStringExtra("clan")
+        finish()
+        app.appScope.launch {
+            if (clear) {
+                withContext(Dispatchers.Main) {
+                    kotlinx.coroutines.suspendCancellableCoroutine { c ->
+                        android.webkit.CookieManager.getInstance().removeAllCookies { c.resumeWith(Result.success(it)) }
+                    }
+                    android.webkit.CookieManager.getInstance().flush()
+                }
+                L.i("RESULT challenge cookies cleared, cf_clearance=${app.http.hasClearanceCookie()}")
+            }
+            if (name != null) {
+                com.macle.royaleassist.overlay.OverlayService.debugLookup = name to clan
+                com.macle.royaleassist.overlay.OverlayService.send(applicationContext, com.macle.royaleassist.overlay.OverlayService.ACTION_DEBUG_LOOKUP)
+                return@launch
+            }
+            val ok = com.macle.royaleassist.lookup.AutoVerifier.shared.solve("debug")
+            val probe = com.macle.royaleassist.lookup.RoyaleApiHealth.shared.state.value
+            L.i("RESULT challenge passed=$ok cf_clearance=${app.http.hasClearanceCookie()} royaleapi=${probe.status} (${probe.source}) auto=${com.macle.royaleassist.lookup.AutoVerifier.shared.state.value}")
         }
     }
 
